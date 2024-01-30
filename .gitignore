@@ -11,3 +11,8 @@ egs/*/data
 egs/libritts/prompts/*.png
 valle/version.py
 infer/
+egs/uaspeech/uaspeechReport.log
+egs/uaspeech/download/uaspeech_cerebral_recordings_all.jsonl.gz
+egs/uaspeech/download/uaspeech_cerebral_supervisions_all.jsonl.gz
+egs/uaspeech/download/uaspeech_control_recordings_all.jsonl.gz
+egs/uaspeech/download/uaspeech_control_supervisions_all.jsonl.gz
