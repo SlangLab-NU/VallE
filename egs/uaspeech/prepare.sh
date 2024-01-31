@@ -57,7 +57,7 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   if [ ! -e data/manifests/.uaspeech.done ]; then
     # If lhotse has the prepare_uaspeech in its library try line below
     # lhotse prepare uaspeech $dl_dir/UASpeech data/manifests
-    python /home/data1/data/lhotse/lhotse/lhotse/recipes/uaspeech.py $dl_dir/UASpeech data/manifests
+    python /home/data1/vall-e.git/VallE/egs/uaspeech/uaspeech.py $dl_dir/UASpeech data/manifests
     touch data/manifests/.uaspeech.done
   fi
 fi

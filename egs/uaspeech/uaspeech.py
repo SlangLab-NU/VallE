@@ -309,6 +309,6 @@ def prepare_uaspeech(
     # print("Sequence:", end=" ")
     # for label in entry['sequence']:
     #     print(f"  {label}")
-sets = prepare_uaspeech(UASPEECH_PATH, None, "normalized", output_dir="/home/data1/VallE/vall-e/egs/uaspeech/data/manifests")
+sets = prepare_uaspeech(UASPEECH_PATH, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
 print(sets)
 ############################################################################################
