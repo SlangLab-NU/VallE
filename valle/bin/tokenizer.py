@@ -123,6 +123,14 @@ def main():
             "train-clean-360",
             "train-other-500",
         ]
+    
+    elif dataset_parts == "uaspeech":
+        dataset_parts = [
+            "test_cerebral",
+            "test_control",
+            "train_cerebral",
+            "train_control",
+        ]
     else:
         dataset_parts = dataset_parts.replace("-p", "").strip().split(" ")
 
@@ -135,7 +143,7 @@ def main():
         suffix=args.suffix,
         types=["recordings", "supervisions", "cuts"],
     )
-
+    logging.info(f"manifests: {manifests}")
     text_tokenizer = None
     if args.text_extractor:
         text_tokenizer = TextTokenizer(backend=args.text_extractor)
@@ -195,6 +203,9 @@ def main():
                         torch.cuda.is_available()
                         and args.audio_extractor == "Encodec"
                     ):
+                        # predicted = torch.randint(0, 10, (2, 64))
+                        # labels = torch.randint(0, 10, (2, 7))
+                        # (predicted == labels).sum().item()
                         cut_set = cut_set.compute_and_store_features_batch(
                             extractor=audio_extractor,
                             storage_path=storage_path,
@@ -229,6 +240,11 @@ def main():
                             text = text.replace("”", '"').replace("“", '"')
                             phonemes = tokenize_text(text_tokenizer, text=text)
                         elif args.prefix == "aishell":
+                            phonemes = tokenize_text(
+                                text_tokenizer, text=c.supervisions[0].text
+                            )
+                            c.supervisions[0].custom = {}
+                        elif args.prefix == "uaspeech":
                             phonemes = tokenize_text(
                                 text_tokenizer, text=c.supervisions[0].text
                             )

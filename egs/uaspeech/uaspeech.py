@@ -277,23 +277,23 @@ def prepare_uaspeech(
 
         # Need to separate control recordings and impaired speakers
         if output_dir is not None:
-            train_control_supervision_set.to_file(output_dir / "uaspeech_train_control_supervisions.jsonl.gz")
-            train_control_recording_set.to_file(output_dir / "uaspeech_train_control_recordings.jsonl.gz")
+            train_control_supervision_set.to_file(output_dir / "uaspeech_supervisions_train_control.jsonl.gz")
+            train_control_recording_set.to_file(output_dir / "uaspeech_recordings_train_control.jsonl.gz")
 
-            test_control_supervision_set.to_file(output_dir / "uaspeech_test_control_supervisions.jsonl.gz")
-            test_control_recording_set.to_file(output_dir / "uaspeech_test_control_recordings.jsonl.gz")
+            test_control_supervision_set.to_file(output_dir / "uaspeech_supervisions_test_control.jsonl.gz")
+            test_control_recording_set.to_file(output_dir / "uaspeech_recordings_test_control.jsonl.gz")
 
-            train_cerebral_supervision_set.to_file(output_dir / "uaspeech_train_cerebral_supervisions.jsonl.gz")
-            train_cerebral_recording_set.to_file(output_dir / "uaspeech_train_cerebral_recordings.jsonl.gz")
+            train_cerebral_supervision_set.to_file(output_dir / "uaspeech_supervisions_train_cerebral.jsonl.gz")
+            train_cerebral_recording_set.to_file(output_dir / "uaspeech_recordings_train_cerebral.jsonl.gz")
 
-            test_cerebral_supervision_set.to_file(output_dir / "uaspeech_test_cerebral_supervisions.jsonl.gz")
-            test_cerebral_recording_set.to_file(output_dir / "uaspeech_test_cerebral_recordings.jsonl.gz")
+            test_cerebral_supervision_set.to_file(output_dir / "uaspeech_supervisions_test_cerebral.jsonl.gz")
+            test_cerebral_recording_set.to_file(output_dir / "uaspeech_recordings_test_cerebral.jsonl.gz")
 
 
-        return {"train_control_recordings": train_control_recording_set, "train_control_supervisions": train_control_supervision_set,
-                "test_control_recordings": test_control_recording_set, "test_control_supervisions": test_control_supervision_set,
-                "train_cerebral_recordings": train_cerebral_recording_set, "train_cerebral_supervisions": train_cerebral_supervision_set,
-                "test_cerebral_recordings": test_cerebral_recording_set, "test_cerebral_supervisions": test_cerebral_supervision_set}
+        return {"train_recordings_control": train_control_recording_set, "train_supervisions_control": train_control_supervision_set,
+                "test_recordings_control": test_control_recording_set, "test_supervisions_control": test_control_supervision_set,
+                "train_recordings_cerebral": train_cerebral_recording_set, "train_supervisions_cerebral": train_cerebral_supervision_set,
+                "test_recordings_cerebral": test_cerebral_recording_set, "test_supervisions_cerebral": test_cerebral_supervision_set}
 
 
 # TEMPORARY TEST SCRIPT
