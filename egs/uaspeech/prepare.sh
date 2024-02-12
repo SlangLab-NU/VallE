@@ -87,13 +87,30 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
         --src-dir "data/manifests" \
         --output-dir "${audio_feats_dir}"
   fi
-  # touch ${audio_feats_dir}/.uaspeech.done
 
-  # cd ${audio_feats_dir}
-  # ln -sf ljspeech_cuts_train.jsonl.gz cuts_train.jsonl.gz
-  # ln -sf ljspeech_cuts_dev.jsonl.gz cuts_dev.jsonl.gz
-  # ln -sf ljspeech_cuts_test.jsonl.gz cuts_test.jsonl.gz
-  # cd -
+   # train
+  lhotse combine \
+    ${audio_feats_dir}/uaspeech_cuts_train_cerebral.jsonl.gz \
+    ${audio_feats_dir}/uaspeech_cuts_train_control.jsonl.gz \
+    ${audio_feats_dir}/cuts_train.jsonl.gz
+  
+  # dev
+  lhotse subset --first 400 \
+    ${audio_feats_dir}/uaspeech_cuts_test_cerebral.jsonl.gz \
+    ${audio_feats_dir}/cuts_dev.jsonl.gz
+
+  lhotse subset --first 400 \
+    ${audio_feats_dir}/uaspeech_cuts_test_control.jsonl.gz \
+    ${audio_feats_dir}/cuts_dev.jsonl.gz
+
+  # test
+  lhotse combine \
+    ${audio_feats_dir}/uaspeech_cuts_test_cerebral.jsonl.gz \
+    ${audio_feats_dir}/uaspeech_cuts_test_control.jsonl.gz \
+    ${audio_feats_dir}/cuts_test.jsonl.gz
+
+  touch ${audio_feats_dir}/.uaspeech.done
+
 fi
 
 python3 ./bin/display_manifest_statistics.py --manifest-dir ${audio_feats_dir}

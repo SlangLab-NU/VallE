@@ -215,21 +215,25 @@ def prepare_uaspeech(
                                     gender=speaker,
                                     text=text
                                 )
-                                if current_entry.startswith("C"):
-                                    if "_B2_" in recording_id:
-                                        test_control_recordings.append(recording)
-                                        test_control_supervisions.append(segment)
+                                if text != None:
+                                    if current_entry.startswith("C"):
+                                        if "_B2_" in recording_id:
+                                            test_control_recordings.append(recording)
+                                            test_control_supervisions.append(segment)
+                                        else:
+                                            train_control_recordings.append(recording)
+                                            train_control_supervisions.append(segment)
                                     else:
-                                        train_control_recordings.append(recording)
-                                        train_control_supervisions.append(segment)
+                                        # Check if it's a test recording
+                                        if "_B2_" in recording_id:
+                                            test_cerebral_recordings.append(recording)
+                                            test_cerebral_supervisions.append(segment)
+                                        else:
+                                            if text != None:
+                                                train_cerebral_recordings.append(recording)
+                                                train_cerebral_supervisions.append(segment)
                                 else:
-                                    # Check if it's a test recording
-                                    if "_B2_" in recording_id:
-                                        test_cerebral_recordings.append(recording)
-                                        test_cerebral_supervisions.append(segment)
-                                    else:
-                                        train_cerebral_recordings.append(recording)
-                                        train_cerebral_supervisions.append(segment)
+                                    print(segment)
                             except Exception as err:
                                 logger.error(err)
                             i += 1
@@ -310,5 +314,9 @@ def prepare_uaspeech(
     # for label in entry['sequence']:
     #     print(f"  {label}")
 sets = prepare_uaspeech(UASPEECH_PATH, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
-print(sets)
+train_cerebral = sets["train_supervisions_cerebral"]
+
+# for element in train_cerebral:
+#     if "M11" in element[id]:
+#         print(element)
 ############################################################################################

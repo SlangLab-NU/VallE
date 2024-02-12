@@ -203,9 +203,6 @@ def main():
                         torch.cuda.is_available()
                         and args.audio_extractor == "Encodec"
                     ):
-                        # predicted = torch.randint(0, 10, (2, 64))
-                        # labels = torch.randint(0, 10, (2, 7))
-                        # (predicted == labels).sum().item()
                         cut_set = cut_set.compute_and_store_features_batch(
                             extractor=audio_extractor,
                             storage_path=storage_path,
@@ -245,10 +242,13 @@ def main():
                             )
                             c.supervisions[0].custom = {}
                         elif args.prefix == "uaspeech":
-                            phonemes = tokenize_text(
-                                text_tokenizer, text=c.supervisions[0].text
-                            )
-                            c.supervisions[0].custom = {}
+                            if c.supervisions[0].text != None:
+                                phonemes = tokenize_text(
+                                    text_tokenizer, text=c.supervisions[0].text
+                                )
+                                c.supervisions[0].custom = {}
+                            else:
+                                logging.info(f"Supervision empty: {c}")
                         else:
                             assert args.prefix == "libritts"
                             phonemes = tokenize_text(

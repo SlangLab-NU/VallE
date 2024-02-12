@@ -16,3 +16,5 @@ egs/uaspeech/download/uaspeech_cerebral_recordings_all.jsonl.gz
 egs/uaspeech/download/uaspeech_cerebral_supervisions_all.jsonl.gz
 egs/uaspeech/download/uaspeech_control_recordings_all.jsonl.gz
 egs/uaspeech/download/uaspeech_control_supervisions_all.jsonl.gz
+data/tokenized/unique_text_tokens.k2symbols
+egs/uaspeech/uaspeechForCluster.zip
