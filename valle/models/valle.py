@@ -87,7 +87,7 @@ class VALLF(nn.Module):
 
         # ID NUM_AUDIO_TOKENS     -> PAD
         # ID NUM_AUDIO_TOKENS + 1 -> BOS
-        # self.ar_audio_prepend_bos = prepend_bos
+        self.nar_audio_prepend_bos = prepend_bos
         # self.ar_audio_embedding = TokenEmbedding(
         #     d_model, NUM_AUDIO_TOKENS + 1 + int(prepend_bos)
         # )
@@ -227,14 +227,14 @@ class VALLF(nn.Module):
                     yield pair
 
     def pad_y_eos(self, y, y_mask_int, eos_id):
-        """
-        method will return the original y tensor both as input and target, 
-        effectively removing autoregressive behavior from the training process. 
-        This change assumes that your NAR model architecture does not require input-target 
-        pairs with shifted sequences like autoregressive models do.
-        """
-        
-        return y, y
+        targets = F.pad(y, (0, 1), value=0) + eos_id * F.pad(
+        y_mask_int, (0, 1), value=1)
+
+        inputs = y  # Initialize inputs with y
+        if self.nar_audio_prepend_bos:
+            # If NAR training and prepend_bos is True, add BOS token to inputs
+            inputs = F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
+        return inputs[:, :-1], targets[:, 1:]
 
     def _prepare_prompts(self, y, y_lens, codes, nar_stage, y_prompts_codes):
         # 5.1 For the NAR acoustic prompt tokens, we select a random segment waveform of 3 seconds
