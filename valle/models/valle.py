@@ -230,11 +230,10 @@ class VALLF(nn.Module):
         targets = F.pad(y, (0, 1), value=0) + eos_id * F.pad(
         y_mask_int, (0, 1), value=1)
 
-        inputs = y  # Initialize inputs with y
         if self.nar_audio_prepend_bos:
             # If NAR training and prepend_bos is True, add BOS token to inputs
-            inputs = F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
-        return inputs[:, :-1], targets[:, 1:]
+            F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
+        return targets[:, :-1], targets[:, 1:]
 
     def _prepare_prompts(self, y, y_lens, codes, nar_stage, y_prompts_codes):
         # 5.1 For the NAR acoustic prompt tokens, we select a random segment waveform of 3 seconds
