@@ -774,7 +774,10 @@ class VALLE(VALLF):
             y, y_lens, codes, nar_stage, y_prompts_codes
         )
 
-        y_len = y_lens.max()
+        # y_len is different between stages from past code
+        if train_stage == 2:
+            y_len = y_lens.max()
+        
         targets = codes[..., nar_stage] + NUM_AUDIO_TOKENS * y_mask_int
         if self.prefix_mode in [2, 4]:
             xy_padding_mask = torch.concat(
@@ -864,8 +867,8 @@ class VALLE(VALLF):
 
         # NOTE: x has been padded in TextTokenCollater
         text = x
-        x = self.ar_text_embedding(text)
-        x = self.ar_text_position(x)
+        x = self.nar_text_embedding(text)
+        x = self.nar_text_position(x)
 
         text_len = x_lens.max()
         prompts = y
@@ -874,16 +877,21 @@ class VALLE(VALLF):
         # AR Decoder
         # TODO: Managing decoder steps avoid repetitive computation
         y = prompts[..., 0]
-        if self.ar_audio_prepend_bos:
+        if self.nar_audio_prepend_bos:
             y = F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
 
         x_len = x_lens.max()
         x_attn_mask = torch.zeros((x_len, x_len), dtype=torch.bool)
 
         while True:
-            y_emb = self.ar_audio_embedding(y)
-            y_emb = self.ar_audio_prenet(y_emb)
-            y_pos = self.ar_audio_position(y_emb)
+            # y_emb = self.nar_audio_embeddings(y)
+            y_emb = []
+            for module in self.nar_audio_embeddings:
+                y_emb.append(module(y[:, int(self.nar_audio_prepend_bos):]))
+
+            y_emb = torch.cat(y_emb, dim=-1)
+            y_emb = self.nar_audio_prenet(y_emb)
+            y_pos = self.nar_audio_position(y_emb)
             xy_pos = torch.concat([x, y_pos], dim=1)
 
             y_len = y.shape[1]
@@ -903,11 +911,11 @@ class VALLE(VALLF):
                 [x_attn_mask_pad, y_attn_mask], dim=0
             ).to(y.device)
 
-            xy_dec, _ = self.ar_decoder(
+            xy_dec, _ = self.nar_decoder(
                 (xy_pos, None),
                 mask=xy_attn_mask,
             )
-            logits = self.ar_predict_layer(xy_dec[:, -1])
+            logits = self.nar_predict_layer(xy_dec[:, -1])
             samples = topk_sampling(
                 logits, top_k=top_k, top_p=1.0, temperature=temperature
             )
@@ -927,13 +935,13 @@ class VALLE(VALLF):
 
             y = torch.concat([y, samples], dim=1)
 
-        codes = [y[:, prefix_len + int(self.ar_audio_prepend_bos) :]]
+        codes = [y[:, prefix_len + int(self.nar_audio_prepend_bos) :]]
         if self.num_quantizers == 1:
             return torch.stack(codes, dim=-1)
 
         # Non-AR Decoders
         y_emb = self.nar_audio_embeddings[0](
-            y[:, int(self.ar_audio_prepend_bos) :]
+            y[:, int(self.nar_audio_prepend_bos) :]
         )
 
         if self.prefix_mode in [2, 4]:  # Exclude enrolled_phonemes

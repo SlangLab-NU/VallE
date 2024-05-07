@@ -29,3 +29,8 @@ egs/uaspeech/~/tensorboard/events.out.tfevents.1707844289.polaris.92201.0
 egs/uaspeech/model.txt
 .gitignore
 egs/uaspeech/uaspeech/model.txt
+egs/uaspeech/uaspeechTrainStage2/tensorboard_stage2/events.out.tfevents.1711324080.polaris.2734130.0
+egs/uaspeech/uaspeechTrainStage2/model.txt
+egs/uaspeech/uaspeechTrainStage1/tensorboard_stage1/events.out.tfevents.1711044924.polaris.550678.0
+egs/uaspeech/uaspeechTrainStage1/tensorboard_stage1/events.out.tfevents.1711044811.polaris.550110.0
+egs/uaspeech/uaspeechTrainStage1/model.txt

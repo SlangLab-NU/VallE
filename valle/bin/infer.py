@@ -181,7 +181,8 @@ def main():
         # https://github.com/lifeiteng/lifeiteng.github.com/blob/main/valle/prepare.py
         with open(args.text) as f:
             for line in f:
-                fields = line.strip().split("\t")
+                fields = line.strip().split(",")
+                print(fields)
                 assert len(fields) == 4
                 prompt_text, prompt_audio, text, audio_path = fields
                 logging.info(f"synthesize text: {text}")
@@ -218,6 +219,8 @@ def main():
                 )
                 # store
                 torchaudio.save(audio_path, samples[0].cpu(), 24000)
+                print(f"audio prompts: {audio_prompts}")
+                print(f"samples: {samples}")
         return
 
     for n, text in enumerate(args.text.split("|")):
