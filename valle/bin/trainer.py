@@ -381,6 +381,8 @@ def load_checkpoint_if_available(
     )
 
     saved_stage = saved_params.get("train_stage", 0)
+    print(f"SAVED STAGE: {saved_stage}")
+    print(f"TRAIN STAGE: {params.train_stage}")
     if params.train_stage != saved_stage:
         # switch training stage
         if params.train_stage and saved_stage:  # switch between 1 and 2
@@ -860,7 +862,6 @@ def run(rank, world_size, args):
     """
     params = get_params()
     params.update(vars(args))
-
     fix_random_seed(params.seed)
     rng = random.Random(params.seed)
     if world_size > 1:
@@ -913,41 +914,29 @@ def run(rank, world_size, args):
     if world_size > 1:
         logging.info("Using DDP")
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
-    # Have to modify check to include Transformer. 
-    # stage_.. methods need to be changed to named_..()
+
     if params.train_stage:
-        if model._get_name() == "Transformer":
-            _model = model.module if isinstance(model, DDP) else model
-            model_parameters = _model.named_parameters(params.train_stage)
-        else:
-            _model = model.module if isinstance(model, DDP) else model
-            model_parameters = _model.stage_parameters(params.train_stage)
+        print(f"IF TRAIN STAGE {params.train_stage}")
+        _model = model.module if isinstance(model, DDP) else model
+        model_parameters = _model.stage_parameters(params.train_stage)
+        print(model_parameters)
+        print("PARAMS FOR STAGE 2")
+        print(_model.stage_parameters(2))
     else:
         model_parameters = model.parameters()
 
     if params.optimizer_name == "ScaledAdam":
         parameters_names = []
         if params.train_stage:  # != 0
-            if model._get_name() == "Transformer":
-                _model = model.module if isinstance(model, DDP) else model
-                parameters_names.append(
-                    [
-                        name_param_pair[0]
-                        for name_param_pair in _model.named_parameters(
-                            params.train_stage
-                        )
-                    ]
-                )
-            else:    
-                _model = model.module if isinstance(model, DDP) else model
-                parameters_names.append(
-                    [
-                        name_param_pair[0]
-                        for name_param_pair in _model.stage_named_parameters(
-                            params.train_stage
-                        )
-                    ]
-                )
+            _model = model.module if isinstance(model, DDP) else model
+            parameters_names.append(
+                [
+                    name_param_pair[0]
+                    for name_param_pair in _model.stage_named_parameters(
+                        params.train_stage
+                    )
+                ]
+            )
         else:
             parameters_names.append(
                 [
@@ -955,7 +944,7 @@ def run(rank, world_size, args):
                     for name_param_pair in model.named_parameters()
                 ]
             )
-
+        print(f"PARAM NAMES: {parameters_names}")
         optimizer = ScaledAdam(
             model_parameters,
             lr=params.base_lr,

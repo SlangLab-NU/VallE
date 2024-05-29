@@ -73,6 +73,9 @@ class SinePositionalEmbedding(nn.Module):
                     self.pe = self.pe.to(dtype=x.dtype, device=x.device)
                 return
         pe = torch.zeros(x.size(1), self.dim_model)
+        print("Positional Encoding")
+        print(f"x.size(): {x.size()}")
+        print(f"self.dim_model: {self.dim_model}")
         if self.reverse:
             position = torch.arange(
                 x.size(1) - 1, -1, -1.0, dtype=torch.float32
@@ -93,5 +96,14 @@ class SinePositionalEmbedding(nn.Module):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         self.extend_pe(x)
         output = x.unsqueeze(-1) if x.ndim == 2 else x
+
+        print("TENSOR")
+        print(f"X: {x.size()}")
+        print(f"x.unsqueeze: {x.unsqueeze(-1).size()}")
+        print(f"Output: {output.size()}")
+        print(f"self.x_scale: {self.x_scale}")
+        print(f"self.alpha: {self.alpha.size()}")
+        print(f"self.pe[:, : x.size(1)]: {self.pe[:, : x.size(1)].size()}")
+
         output = output * self.x_scale + self.alpha * self.pe[:, : x.size(1)]
         return self.dropout(output)
