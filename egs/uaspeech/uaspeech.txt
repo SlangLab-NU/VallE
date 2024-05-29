@@ -1,7 +1,7 @@
+ENTER,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/M05/M05_B1_C4_M2.wav,ENTER,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/CMO5/CM05_B1_C4_M2.wav
 BACKSPACE,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/M05/M05_B1_C2_M2.wav,BACKSPACE,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/CM05/CM05_B1_C2_M2.wav
-DELETE,audioSamples/MO5/M05_B1_C3_M2.wav,DELETE,audioSamples/CMO5/CM05_B1_C3_M2.wav
-ENTER,audioSamples/MO5/M05_B1_C4_M2.wav,ENTER,audioSamples/CMO5/CM05_B1_C4_M2.wav
-TAB,audioSamples/MO5/M05_B1_C5_M2.wav,TAB,audioSamples/CMO5/CM05_B1_C5_M2.wav
+DELETE,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/MO5/M05_B1_C3_M2.wav,DELETE,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/CMO5/CM05_B1_C3_M2.wav
+TAB,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/MO5/M05_B1_C5_M2.wav,TAB,/home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/CMO5/CM05_B1_C5_M2.wav
 ESCAPE,audioSamples/MO5/M05_B1_C6_M2.wav,ESCAPE,audioSamples/CMO5/CM05_B1_C6_M2.wav
 COMMAND,audioSamples/FO4/F04_B1_LF_M3.wav,COMMAND,audioSamples/CFO4/CF04_B1_LF_M3.wav
 WHO,audioSamples/FO4/F04_B1_CW85_M3.wav,WHO,audioSamples/CFO4/CF04_B1_CW85_M3.wav

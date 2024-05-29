@@ -74,7 +74,7 @@ class SinePositionalEmbedding(nn.Module):
                 return
         pe = torch.zeros(x.size(1), self.dim_model)
         print("Positional Encoding")
-        print(f"x.size(1): {x.size(1)}")
+        print(f"x.size(): {x.size()}")
         print(f"self.dim_model: {self.dim_model}")
         if self.reverse:
             position = torch.arange(
