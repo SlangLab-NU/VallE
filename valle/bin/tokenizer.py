@@ -123,6 +123,14 @@ def main():
             "train-clean-360",
             "train-other-500",
         ]
+    
+    elif dataset_parts == "uaspeech":
+        dataset_parts = [
+            "test_cerebral",
+            "test_control",
+            "train_cerebral",
+            "train_control",
+        ]
     else:
         dataset_parts = dataset_parts.replace("-p", "").strip().split(" ")
 
@@ -135,7 +143,7 @@ def main():
         suffix=args.suffix,
         types=["recordings", "supervisions", "cuts"],
     )
-
+    logging.info(f"manifests: {manifests}")
     text_tokenizer = None
     if args.text_extractor:
         text_tokenizer = TextTokenizer(backend=args.text_extractor)
@@ -180,7 +188,7 @@ def main():
                         f"{args.output_dir}/{args.prefix}_fbank_{partition}"
                     )
 
-                if args.prefix.lower() in ["ljspeech", "aishell", "baker"]:
+                if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
                     cut_set = cut_set.resample(24000)
                     # https://github.com/lifeiteng/vall-e/issues/90
                     # if args.prefix == "aishell":
@@ -233,6 +241,14 @@ def main():
                                 text_tokenizer, text=c.supervisions[0].text
                             )
                             c.supervisions[0].custom = {}
+                        elif args.prefix == "uaspeech":
+                            if c.supervisions[0].text != None:
+                                phonemes = tokenize_text(
+                                    text_tokenizer, text=c.supervisions[0].text
+                                )
+                                c.supervisions[0].custom = {}
+                            else:
+                                logging.info(f"Supervision empty: {c}")
                         else:
                             assert args.prefix == "libritts"
                             phonemes = tokenize_text(

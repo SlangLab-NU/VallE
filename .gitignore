@@ -11,3 +11,17 @@ egs/*/data
 egs/libritts/prompts/*.png
 valle/version.py
 infer/
+egs/uaspeech/uaspeechReport.log
+egs/uaspeech/download/uaspeech_cerebral_recordings_all.jsonl.gz
+egs/uaspeech/download/uaspeech_cerebral_supervisions_all.jsonl.gz
+egs/uaspeech/download/uaspeech_control_recordings_all.jsonl.gz
+egs/uaspeech/download/uaspeech_control_supervisions_all.jsonl.gz
+data/tokenized/unique_text_tokens.k2symbols
+egs/uaspeech/uaspeechForCluster.zip
+egs/libritts/unique_text_tokens.k2symbols
+egs/uaspeech/~/model.txt
+egs/uaspeech/~/tensorboard/events.out.tfevents.1707844131.polaris.91460.0
+egs/uaspeech/~/tensorboard/events.out.tfevents.1707844289.polaris.92201.0
+egs/uaspeech/egs/uaspeech/tensorboard_stage1/
+egs/uaspeech/egs/uaspeech/tensorboard_stage2/
+egs/uaspeech/egs/uaspeech/model.txt

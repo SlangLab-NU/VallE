@@ -822,8 +822,10 @@ class VALLE(VALLF):
             ar_xy_padding_mask = torch.concat(
                 [x_mask, F.pad(y_mask, (1, 0), value=False)], dim=1
             )
+            print(f"BOS prepended: {ar_xy_padding_mask}")
         else:
             ar_xy_padding_mask = xy_padding_mask
+            print(f"BOS NOT prepended: {ar_xy_padding_mask}")
         # AR Decoder
         if train_stage in [0, 1]:
             x = self.ar_text_embedding(text)
@@ -879,7 +881,7 @@ class VALLE(VALLF):
             metrics["ArTop10Accuracy"] = self.ar_accuracy_metric(
                 logits.detach(), targets
             ).item() * y_lens.sum().type(torch.float32)
-
+        print(f"Codes from AR forward: {codes}")
         if self.num_quantizers == 1:
             return ((x, codes), total_loss, metrics)
 

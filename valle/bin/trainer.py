@@ -913,25 +913,41 @@ def run(rank, world_size, args):
     if world_size > 1:
         logging.info("Using DDP")
         model = DDP(model, device_ids=[rank], find_unused_parameters=True)
-
+    # Have to modify check to include Transformer. 
+    # stage_.. methods need to be changed to named_..()
     if params.train_stage:
-        _model = model.module if isinstance(model, DDP) else model
-        model_parameters = _model.stage_parameters(params.train_stage)
+        if model._get_name() == "Transformer":
+            _model = model.module if isinstance(model, DDP) else model
+            model_parameters = _model.named_parameters(params.train_stage)
+        else:
+            _model = model.module if isinstance(model, DDP) else model
+            model_parameters = _model.stage_parameters(params.train_stage)
     else:
         model_parameters = model.parameters()
 
     if params.optimizer_name == "ScaledAdam":
         parameters_names = []
         if params.train_stage:  # != 0
-            _model = model.module if isinstance(model, DDP) else model
-            parameters_names.append(
-                [
-                    name_param_pair[0]
-                    for name_param_pair in _model.stage_named_parameters(
-                        params.train_stage
-                    )
-                ]
-            )
+            if model._get_name() == "Transformer":
+                _model = model.module if isinstance(model, DDP) else model
+                parameters_names.append(
+                    [
+                        name_param_pair[0]
+                        for name_param_pair in _model.named_parameters(
+                            params.train_stage
+                        )
+                    ]
+                )
+            else:    
+                _model = model.module if isinstance(model, DDP) else model
+                parameters_names.append(
+                    [
+                        name_param_pair[0]
+                        for name_param_pair in _model.stage_named_parameters(
+                            params.train_stage
+                        )
+                    ]
+                )
         else:
             parameters_names.append(
                 [
