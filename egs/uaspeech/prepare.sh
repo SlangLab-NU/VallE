@@ -90,16 +90,20 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
 
    # train
   lhotse combine \
-    ${audio_feats_dir}/uaspeech_cuts_train_cerebral.jsonl.gz \
-    ${audio_feats_dir}/uaspeech_cuts_train_control.jsonl.gz \
+    ${audio_feats_dir}/uaspeech_cuts_CF02_train_recordings.jsonl.gz \
+    ${audio_feats_dir}/uaspeech_cuts_F02_train_recordings.jsonl.gz \
     ${audio_feats_dir}/cuts_train.jsonl.gz
+    
   
-  # dev
-  lhotse subset --first 400 \
-    ${audio_feats_dir}/uaspeech_cuts_test_cerebral.jsonl.gz \
-    ${audio_feats_dir}/cuts_dev.jsonl.gz
+  total_cuts_test=$(zcat ${audio_feats_dir}/cuts_test.jsonl.gz | wc -l)
+  mid_index_test=$((total_cuts_test / 2))
 
-  lhotse subset --first 400 \
+  # test
+  lhotse subset --range 0:${mid_index_train} \
+    ${audio_feats_dir}/cuts_test.jsonl.gz
+
+  # dev
+  lhotse subset --range ${mid_index_train}:${total_cuts_train} \
     ${audio_feats_dir}/uaspeech_cuts_test_control.jsonl.gz \
     ${audio_feats_dir}/cuts_dev.jsonl.gz
 

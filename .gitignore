@@ -22,3 +22,9 @@ egs/libritts/unique_text_tokens.k2symbols
 egs/uaspeech/~/model.txt
 egs/uaspeech/~/tensorboard/events.out.tfevents.1707844131.polaris.91460.0
 egs/uaspeech/~/tensorboard/events.out.tfevents.1707844289.polaris.92201.0
+egs/uaspeech/uaspeechTrainStage1/*
+egs/uaspeech/uaspeechTrainStage2/*
+egs/uaspeech/tensorboard_stage1/*
+egs/uaspeech/tensorboard_stage2/*
+egs/uaspeech/egs/uaspeech/model.txt
+egs/uaspeech/uaspeech/*

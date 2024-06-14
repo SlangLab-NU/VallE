@@ -89,6 +89,175 @@ def read_mlf(file_path):
     return mlf_data_sorted
 
 
+def extract_mlf_information(speaker_dict: dict, speaker_path: str):
+    """
+    Processes an mlf file and inserts the utterance code
+    """
+    with open(speaker_path, 'r') as file:
+        lines = file.readlines()
+        current_entry = None
+        for line in lines:
+            line = line.strip()
+            if line.startswith("#") or line.startswith(".") or not line:
+                continue
+            if line.startswith('"'):
+                current_entry = line[3:-5]
+                speaker_dict[current_entry] = None
+            else: # get the utterance text
+                if current_entry is not None:
+                    speaker_dict[current_entry] = line
+    return speaker_dict
+
+
+def standardize_key(key):
+    """
+    Function to standardize the keys by removing the first character. Need this for finding
+    intersection between typical and atypical speaker utterances. Typical speakers will start
+    with a 'C'
+    """
+    return key[1:]
+
+
+def create_speaker_speaker_pair(
+    corpus_dir: Pathlike,
+    typical_speaker: str,
+    atypical_speaker: str,
+    alignments_dir: Optional[Pathlike] = None,
+    dataset_parts: Union[str, Sequence[str]] = "auto",
+    output_dir: Optional[Pathlike] = None, 
+    num_jobs: int = 1,
+)-> Dict[str, Dict[str, Union[RecordingSet, RecordingSet]]]:
+    """
+    Returns a manifest which consists of a RecordingSet pair. The pair contains a typical speaker
+    and an atypical speaker linking to an audio recording of the same utterance. This is used for establishing 
+    parallel model training.
+
+    :param corpus_dir: Pathlike, the path of the data dir.
+    :param dataset_parts: string or sequence of strings representing dataset part names, e.g. 'normalized', 'noisereduced', 'original'.
+        By default we will infer which parts are available in ``corpus_dir``.
+    :param output_dir: Pathlike, the path where to write the manifests.
+    :param num_jobs: int, number of parallel threads used for 'parse_utterance' calls.
+    :return: a Dict whose key is the dataset part, and the value is Dicts with the keys 'typical_audio' and 'atypical_audio'.
+    """
+    corpus_dir = Path(corpus_dir)
+    corpus_audio_dir = Path(os.path.join(corpus_dir, "audio"))
+    alignments_dir = Path(alignments_dir) if alignments_dir is not None else corpus_audio_dir
+    assert corpus_audio_dir.is_dir(), f"No such directory: {corpus_audio_dir}"
+
+    if dataset_parts == "auto":
+        print("I went down the auto path")
+        dataset_parts = set(UASPEECH_FULL).intersection(path.name for path in corpus_audio_dir.glob("*"))
+        
+        if not dataset_parts:
+            raise ValueError(
+                f"Could not find any of UASpeech dataset parts in: {corpus_audio_dir}"
+            )
+    # Here we can specify a specific processed batch of speaker data
+    elif isinstance(dataset_parts, str):
+        print("dataset = " + dataset_parts)
+        dataset_parts = [dataset_parts]
+    logger.info(f"dataset_parts: {dataset_parts}")
+    manifests = {}
+
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        # Maybe the manifests already exist: we can read them and save a bit of preparation time.
+        manifests = read_manifests_if_cached(
+            dataset_parts=dataset_parts, output_dir=output_dir
+        )
+
+    metadata_mlf_path = os.path.join(corpus_dir, "mlf")
+
+    typical_recording_train_set = []
+    atypical_recording_train_set = []
+    typical_recording_test_set = []
+    atypical_recording_test_set = []
+
+    with ThreadPoolExecutor(num_jobs) as ex:
+        for part in tqdm(dataset_parts, desc="Dataset parts"):
+            if not part.startswith("."): # Avoid hidden files
+                logging.info(f"Processing UASpeech subset: {part}")
+                # Check if part has been prepared already
+                if manifests_exist(part=part, output_dir=output_dir):
+                    logging.info(f"UASpeech subset: {part} already prepared - skipping.")
+                    continue
+                
+                # assign metadata file for speaker
+                typical_speaker_path =  os.path.join(os.path.join(metadata_mlf_path, typical_speaker), typical_speaker + METADATA_FILE)
+                atypical_speaker_path = os.path.join(os.path.join(metadata_mlf_path, atypical_speaker), atypical_speaker + METADATA_FILE)
+                
+                # Ensure both metadata files exist
+                assert os.path.isfile(typical_speaker_path), f"No such file: {typical_speaker_path}"
+                assert os.path.isfile(atypical_speaker_path), f"No such file: {atypical_speaker_path}"
+
+                typical_utterances = {}
+                atypical_utterances = {}
+
+                typical_utterances = extract_mlf_information(typical_utterances, typical_speaker_path)
+                atypical_utterances = extract_mlf_information(atypical_utterances, atypical_speaker_path)
+
+                # Remove 'C' from typical utterances
+                standardize_typical_keys = {standardize_key(key): key for key in typical_utterances}
+                # Find intersection between two dictionaries
+                intersection_utterances = set(standardize_typical_keys.keys()).intersection(set(atypical_utterances.keys()))
+                # Set typical utterances back to including 'C'
+                typical_utterances = {standardize_typical_keys[key]: typical_utterances[standardize_typical_keys[key]] for key in intersection_utterances}
+                atypical_utterances = {key: atypical_utterances[key] for key in intersection_utterances}
+                
+                assert len(typical_utterances) == len(atypical_utterances), f"Length Mismatch... Typical: {len(typical_utterances)} and Atypical: {len(atypical_utterances)}"
+                logger.info(f"Length of typical: {len(typical_utterances)}, Length of atypical: {len(atypical_utterances)}")
+
+                for key, value in tqdm(atypical_utterances.items(), desc="Preparing parallel speakers"):
+                    # Since the two dictionaries are the same other than a 'C' in front of the key for typical speaker
+                    # This iterates through one dictionary to create recording set for both speakers
+                    try:
+                        atypical_recording_id = value + "_" + key
+                        atypical_audio_path = corpus_audio_dir / part / atypical_speaker /f"{key}.wav"
+                        atypical_recording = Recording.from_file(
+                            atypical_audio_path, 
+                            atypical_recording_id
+                        )
+                        if "_B2_" in atypical_recording_id:
+                            atypical_recording_test_set.append(atypical_recording)
+                        else:
+                            atypical_recording_train_set.append(atypical_recording)
+
+                        typical_recording_id = value + "_C" + key
+                        typical_audio_path = corpus_audio_dir / part / typical_speaker /f"C{key}.wav"
+                        typical_recording = Recording.from_file(
+                            typical_audio_path,
+                            typical_recording_id
+                        )
+                        if "_B2_" in typical_recording_id:
+                            typical_recording_test_set.append(typical_recording)
+                        else:
+                            typical_recording_train_set.append(typical_recording)
+
+                    except Exception as err:
+                                logger.error(err)
+
+    typical_recording_train_set = RecordingSet.from_recordings(typical_recording_train_set)
+    atypical_recording_train_set = RecordingSet.from_recordings(atypical_recording_train_set)
+
+    typical_recording_test_set = RecordingSet.from_recordings(typical_recording_test_set)
+    atypical_recording_test_set = RecordingSet.from_recordings(atypical_recording_test_set)
+
+    # Cannot utilize fix_manifests as it requires a supervision. I could add one to ensure recording is validated and remove it later
+    # typical_recording_set= fix_manifests(typical_recording_set)
+
+    # Need to separate control recordings and impaired speakers
+    if output_dir is not None:
+        typical_recording_train_set.to_file(output_dir / "CF02_train_recordings.jsonl.gz")
+        atypical_recording_train_set.to_file(output_dir / "F02_train_recordings.jsonl.gz")
+        typical_recording_test_set.to_file(output_dir / "CF02_test_recordings.jsonl.gz")
+        atypical_recording_test_set.to_file(output_dir / "F02_test_recordings.jsonl.gz")
+
+    return {"typical_train_recordings": typical_recording_train_set,
+            "atypical_train_recordings": atypical_recording_train_set,
+            "typical_test_recordings": typical_recording_test_set,
+            "atypical_test_recordings": atypical_recording_test_set}
+
 def prepare_uaspeech(
     corpus_dir: Pathlike,
     alignments_dir: Optional[Pathlike] = None,
@@ -176,7 +345,8 @@ def prepare_uaspeech(
                 if manifests_exist(part=part, output_dir=output_dir):
                     logging.info(f"UASpeech subset: {part} already prepared - skipping.")
                     continue
-                for speaker in tqdm(os.listdir(metadata_mlf_path), desc=f"Preparing speaker {part}"):
+                for speaker in tqdm(os.listdir(metadata_mlf_path), desc=f"Preparing speaker {part}\n"):
+                    print(f"SPEAKER: {speaker}")
                     metadata_utterances = os.path.join(os.path.join(metadata_mlf_path, speaker), speaker + METADATA_FILE)
                     # assert metadata_utterances.is_file(), f"No such file: {metadata_utterances}"
                     with open(metadata_utterances, 'r') as file:
@@ -223,6 +393,8 @@ def prepare_uaspeech(
                                         else:
                                             train_control_recordings.append(recording)
                                             train_control_supervisions.append(segment)
+                                        # print(recording)
+                                        # print(segment)
                                     else:
                                         # Check if it's a test recording
                                         if "_B2_" in recording_id:
@@ -232,7 +404,10 @@ def prepare_uaspeech(
                                             if text != None:
                                                 train_cerebral_recordings.append(recording)
                                                 train_cerebral_supervisions.append(segment)
+                                        # print(recording)
+                                        # print(segment)
                                 else:
+                                    print(recording)
                                     print(segment)
                             except Exception as err:
                                 logger.error(err)
@@ -254,17 +429,17 @@ def prepare_uaspeech(
         """
         Sample outputs:
 
-        Recording(id='CF03_B3_UW93_M3', sources=[AudioSource(type='file', channels=[0], source='/home/data1/data/UASpeech/audio/normalized/CF03/CF03_B3_UW93_M3.wav')], 
-                sampling_rate=16000, num_samples=33724, duration=2.10775, channel_ids=[0], transforms=None)
+        Recording(id='4947_normalized_M11_B3_LR_M7', sources=[AudioSource(type='file', channels=[0], source='/home/data1/data/UASpeech/audio/normalized/M11/M11_B3_LR_M7.wav')], 
+                    sampling_rate=16000, num_samples=50675, duration=3.1671875, channel_ids=[0], transforms=None)
         
-        SupervisionSegment(id='7648normalized_CF03_B3_UW93_M3', recording_id='7648normalized_CF03_B3_UW93_M3', start=0.0, duration=2.10775, 
-                            channel=0, text='DISPOSSESS', language='English', speaker=None, gender='CF03', custom=None, alignment=None)
+        SupervisionSegment(id='4947_normalized_M11_B3_LR_M7', recording_id='4947_normalized_M11_B3_LR_M7', start=0.0, duration=3.1671875, channel=0, text='ROMEO', language='English', 
+                            speaker=None, gender='M11', custom=None, alignment=None)
         
-        Recording(id='CF03_B3_UW93_M3', sources=[AudioSource(type='file', channels=[0], source='/home/data1/data/UASpeech/audio/normalized/CF03/CF03_B3_UW93_M3.wav')], 
-                 sampling_rate=16000, num_samples=33724, duration=2.10775, channel_ids=[0], transforms=None)
+        Recording(id='4948_normalized_M11_B1_CW11_M7', sources=[AudioSource(type='file', channels=[0], source='/home/data1/data/UASpeech/audio/normalized/M11/M11_B1_CW11_M7.wav')], 
+                    sampling_rate=16000, num_samples=55457, duration=3.4660625, channel_ids=[0], transforms=None)
         
-        SupervisionSegment(id='7649normalized_CF03_B3_UW93_M3', recording_id='7649normalized_CF03_B3_UW93_M3', start=0.0, duration=2.10775, 
-                            channel=0, text='GLASSES', language='English', speaker=None, gender='CF03', custom=None, alignment=None)
+        SupervisionSegment(id='4948_normalized_M11_B1_CW11_M7', recording_id='4948_normalized_M11_B1_CW11_M7', start=0.0, duration=3.4660625, channel=0, text='ROMEO', language='English', 
+                            speaker=None, gender='M11', custom=None, alignment=None)
         """
 
         train_control_recording_set, train_control_supervision_set = fix_manifests(train_control_recording_set, train_control_supervision_set)
@@ -309,14 +484,29 @@ def prepare_uaspeech(
 # # Print the result
 # for entry in mlf_data:
 #     print(entry)
-    # print(f"Label: {entry['label']}")
-    # print("Sequence:", end=" ")
-    # for label in entry['sequence']:
-    #     print(f"  {label}")
-sets = prepare_uaspeech(UASPEECH_PATH, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
-train_cerebral = sets["train_supervisions_cerebral"]
+#     print(f"Label: {entry['label']}")
+#     print("Sequence:", end=" ")
+#     for label in entry['sequence']:
+#         print(f"  {label}")
+# typical = {}
+# PATH = "/home/data1/data/UASpeech/mlf/CF02/CF02_word.mlf"
+# extract_mlf_information(typical, PATH)
+
+sets = create_speaker_speaker_pair(UASPEECH_PATH, "CF02", "F02", None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
+typical_train = sets["typical_train_recordings"]
+atypical_train = sets["atypical_train_recordings"]
+typical_test = sets["typical_test_recordings"]
+atypical_test = sets["atypical_test_recordings"]
+
+print(f"Typical train length {len(typical_train)}")
+print(f"Atypical train length {len(atypical_train)}")
+print(f"Typical test length {len(typical_test)}")
+print(f"Atypical test length {len(atypical_test)}")
+
+
+# sets = prepare_uaspeech(UASPEECH_PATH, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
+# train_cerebral = sets["train_supervisions_cerebral"]
 
 # for element in train_cerebral:
-#     if "M11" in element[id]:
-#         print(element)
+#     print(element)
 ############################################################################################

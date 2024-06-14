@@ -1027,6 +1027,7 @@ def run(rank, world_size, args):
     train_dl = dataset.train_dataloaders(
         train_cuts, sampler_state_dict=sampler_state_dict
     )
+    print(f"TRAIN DATA LOADER: {train_dl}")
     valid_dl = dataset.valid_dataloaders(valid_cuts)
 
     if params.oom_check:

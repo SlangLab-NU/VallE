@@ -90,7 +90,15 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
         text_tokens, text_tokens_lens = self.text_token_collater(
             [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
         )
-
+        print("GET ITEM WAS CALLED")
+        print(f"utt_id: {[cut.id for cut in cuts]}")
+        print(f"text: {[cut.supervisions[0].text for cut in cuts]}")
+        print(f"audio: {audio}")
+        print(f"audio_lens: {audio_lens}")
+        print(f"audio_features: {audio_features}")
+        print(f"audio_features_lens: {audio_features_lens}")
+        print(f"text_tokens: {text_tokens}")
+        print(f"text_tokens_lens: {text_tokens_lens}")
         return {
             "utt_id": [cut.id for cut in cuts],
             "text": [cut.supervisions[0].text for cut in cuts],
