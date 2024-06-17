@@ -258,6 +258,7 @@ def create_speaker_speaker_pair(
             "typical_test_recordings": typical_recording_test_set,
             "atypical_test_recordings": atypical_recording_test_set}
 
+# OLD VERSION
 def prepare_uaspeech(
     corpus_dir: Pathlike,
     alignments_dir: Optional[Pathlike] = None,

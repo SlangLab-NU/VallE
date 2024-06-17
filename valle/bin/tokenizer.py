@@ -126,10 +126,10 @@ def main():
     
     elif dataset_parts == "uaspeech":
         dataset_parts = [
-            "test_cerebral",
-            "test_control",
-            "train_cerebral",
-            "train_control",
+            "CF02_train_recordings",
+            "CF02_train_recordings",
+            "F02_test_recordings",
+            "F02_test_recordings",
         ]
     else:
         dataset_parts = dataset_parts.replace("-p", "").strip().split(" ")

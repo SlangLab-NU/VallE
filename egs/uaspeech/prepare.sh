@@ -88,30 +88,31 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
         --output-dir "${audio_feats_dir}"
   fi
 
-   # train
-  lhotse combine \
-    ${audio_feats_dir}/uaspeech_cuts_CF02_train_recordings.jsonl.gz \
-    ${audio_feats_dir}/uaspeech_cuts_F02_train_recordings.jsonl.gz \
-    ${audio_feats_dir}/cuts_train.jsonl.gz
-    
-  
-  total_cuts_test=$(zcat ${audio_feats_dir}/cuts_test.jsonl.gz | wc -l)
+  # Need to split speaker test set into test/dev sets. Has to be done for each speaker
+  # For now it will have hardcoded speakers, for the sake of adapting model
+
+  total_cuts_test=$(zcat ${audio_feats_dir}/uaspeech_cuts_CF02_train_recordings.jsonl.gz | wc -l)
   mid_index_test=$((total_cuts_test / 2))
 
-  # test
-  lhotse subset --range 0:${mid_index_train} \
-    ${audio_feats_dir}/cuts_test.jsonl.gz
+  # test typical
+  lhotse subset --range 0:${mid_index_test} \
+    ${audio_feats_dir}/uaspeech_cuts_CF02_train_recordings.jsonl.gz \
+    ${audio_feats_dir}/cuts_test_CF02.jsonl.gz
 
-  # dev
-  lhotse subset --range ${mid_index_train}:${total_cuts_train} \
-    ${audio_feats_dir}/uaspeech_cuts_test_control.jsonl.gz \
-    ${audio_feats_dir}/cuts_dev.jsonl.gz
+  # test atypical
+  lhotse subset --range 0:${mid_index_test} \
+    ${audio_feats_dir}/uaspeech_cuts_F02_train_recordings.jsonl.gz \
+    ${audio_feats_dir}/cuts_test_F02.jsonl.gz
 
-  # test
-  lhotse combine \
-    ${audio_feats_dir}/uaspeech_cuts_test_cerebral.jsonl.gz \
-    ${audio_feats_dir}/uaspeech_cuts_test_control.jsonl.gz \
-    ${audio_feats_dir}/cuts_test.jsonl.gz
+  # dev typical
+  lhotse subset --range ${mid_index_test}:${total_cuts_test} \
+    ${audio_feats_dir}/uaspeech_cuts_CF02_train_recordings.jsonl.gz \
+    ${audio_feats_dir}/cuts_dev_CF02.jsonl.gz
+
+  # dev atypical
+  lhotse subset --range ${mid_index_test}:${total_cuts_test} \
+    ${audio_feats_dir}/uaspeech_cuts_F02_train_recordings.jsonl.gz \
+    ${audio_feats_dir}/cuts_dev_F02.jsonl.gz
 
   touch ${audio_feats_dir}/.uaspeech.done
 
