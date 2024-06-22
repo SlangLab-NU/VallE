@@ -28,3 +28,5 @@ egs/uaspeech/tensorboard_stage1/*
 egs/uaspeech/tensorboard_stage2/*
 egs/uaspeech/egs/uaspeech/model.txt
 egs/uaspeech/uaspeech/*
+egs/uaspeech/src_tgt_cuts.json
+egs/uaspeech/src_tgt_cuts.jsonl.gz

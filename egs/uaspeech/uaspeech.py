@@ -248,10 +248,10 @@ def create_speaker_speaker_pair(
 
     # Need to separate control recordings and impaired speakers
     if output_dir is not None:
-        typical_recording_train_set.to_file(output_dir / "CF02_train_recordings.jsonl.gz")
-        atypical_recording_train_set.to_file(output_dir / "F02_train_recordings.jsonl.gz")
-        typical_recording_test_set.to_file(output_dir / "CF02_test_recordings.jsonl.gz")
-        atypical_recording_test_set.to_file(output_dir / "F02_test_recordings.jsonl.gz")
+        typical_recording_train_set.to_file(output_dir / "uaspeech_recordings_CF02_train.jsonl.gz")
+        atypical_recording_train_set.to_file(output_dir / "uaspeech_recordings_F02_train.jsonl.gz")
+        typical_recording_test_set.to_file(output_dir / "uaspeech_recordings_CF02_test.jsonl.gz")
+        atypical_recording_test_set.to_file(output_dir / "uaspeech_recordings_F02_test.jsonl.gz")
 
     return {"typical_train_recordings": typical_recording_train_set,
             "atypical_train_recordings": atypical_recording_train_set,
