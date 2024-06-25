@@ -283,7 +283,7 @@ def main():
                     src_cut.target_recording = tgt_cut
                     # src_cut.target_recording = {"target_recording": tgt_cut}
 
-        src_cuts.to_file(f"{args.output_dir}/{args.prefix}_cuts_{src_partition}.json")
+        src_cuts.to_file(f"{args.output_dir}/cuts_{src_partition}.jsonl.gz")
     
 
     with get_executor() as ex:

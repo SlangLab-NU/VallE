@@ -36,15 +36,22 @@ def get_args():
         default=Path("data/tokenized"),
         help="Path to the tokenized manifests.",
     )
+    parser.add_argument(
+        "--speaker",
+        type=str,
+        default="",
+        help="The labelled atypical speaker",
+    )
     return parser.parse_args()
 
 
 def main():
     args = get_args()
     manifest_dir = args.manifest_dir or Path("data/tokenized")
+    speaker = args.speaker
     for part in ["train", "dev", "test"]:
         print(f"##  {part}")
-        cuts = load_manifest_lazy(manifest_dir / f"cuts_{part}.jsonl.gz")
+        cuts = load_manifest_lazy(manifest_dir / f"cuts_{speaker}_{part}.jsonl.gz") # cuts_{part}.jsonl.gz
         cuts.describe()
         print("\n")
 
