@@ -512,21 +512,36 @@ def compute_loss(
         if isinstance(model, DDP)
         else next(model.parameters()).device
     )
-    # at entry, TextTokens is (N, P)
-    text_tokens = batch["text_tokens"].to(device)
-    text_tokens_lens = batch["text_tokens_lens"].to(device)
-    assert text_tokens.ndim == 2
+    
+    """
+    The batch info:
+        'utt_id': str
+        'audio': (NumSamples,) float tensor
+        'audio_lens': int tensor
+        'audio_features': (NumFrames x NumFeatures) float tensor
+        'audio_features_lens': int tensor
+        'target_audio': (NumSamples,) float tensor
+        'target_audio_lens': int tensor
+        'target_audio_features': (NumFrames x NumFeatures) float tensor
+        'target_audio_features_lens': int tensor
+    
+    So replace ['text_tokens'] with the respective target_audio
+    """
+    target_audio_features = batch["target_audio_features"].to(device)
+    target_audio_features_lens = batch["target_audio_features_lens"].to(device)
+    assert target_audio_features.ndim == 3
 
     audio_features = batch["audio_features"].to(device)
     audio_features_lens = batch["audio_features_lens"].to(device)
     assert audio_features.ndim == 3
 
+    # Where forward() for model will be called
     with torch.set_grad_enabled(is_training):
         predicts, loss, metrics = model(
-            x=text_tokens,
-            x_lens=text_tokens_lens,
-            y=audio_features,
-            y_lens=audio_features_lens,
+            x=audio_features, # atypical speaker
+            x_lens=audio_features_lens,
+            y=target_audio_features, # typical speaker
+            y_lens=target_audio_features_lens,
             train_stage=params.train_stage,
         )
 
@@ -536,7 +551,7 @@ def compute_loss(
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         info["frames"] = (audio_features_lens).sum().item()
-        info["utterances"] = text_tokens.size(0)
+        info["utterances"] = target_audio_features_lens.sum().item()
 
     # Note: We use reduction=sum while computing the loss.
     info["loss"] = loss.detach().cpu().item()

@@ -18,6 +18,25 @@ import torch
 import torch.nn as nn
 
 
+class ContinuousEmbedding(nn.Module):
+    def __init__(
+        self,
+        dim_model: int,
+        input_dim: int,
+        dropout: float = 0.0,
+    ):
+        super().__init__()
+
+        self.dim_model = dim_model
+        self.input_projection = nn.Linear(input_dim, dim_model)
+        self.dropout = torch.nn.Dropout(p=dropout)
+
+    def forward(self, x: torch.Tensor):
+        x = self.input_projection(x)
+        x = self.dropout(x)
+        return x
+        
+
 class TokenEmbedding(nn.Module):
     def __init__(
         self,

@@ -37,7 +37,7 @@ from lhotse.utils import fix_random_seed
 from torch.utils.data import DataLoader
 
 from valle.data.collation import get_text_token_collater
-from valle.data.dataset import SpeechSynthesisDataset
+from valle.data.dataset import SpeechSynthesisDataset, AudioToAudioDataset
 from valle.data.fbank import get_fbank_extractor
 from valle.data.input_strategies import PromptedPrecomputedFeatures
 
@@ -303,15 +303,13 @@ class TtsDataModule:
             # to be strict (e.g. could be randomized)
             # transforms = [PerturbSpeed(factors=[0.9, 1.1], p=2/3)] + transforms   # noqa
             # Drop feats to be on the safe side.
-            train = SpeechSynthesisDataset(
-                get_text_token_collater(self.args.text_tokens),
+            train = AudioToAudioDataset(
                 cut_transforms=transforms,
                 feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor()),
                 feature_transforms=input_transforms,
             )
         else:
-            train = SpeechSynthesisDataset(
-                get_text_token_collater(self.args.text_tokens),
+            train = AudioToAudioDataset(
                 feature_input_strategy=_get_input_strategy(
                     self.args.input_strategy, self.args.dataset, cuts_train
                 ),
@@ -366,14 +364,12 @@ class TtsDataModule:
     def valid_dataloaders(self, cuts_valid: CutSet) -> DataLoader:
         logging.info("About to create dev dataset")
         if self.args.on_the_fly_feats:
-            validate = SpeechSynthesisDataset(
-                get_text_token_collater(self.args.text_tokens),
+            validate = AudioToAudioDataset(
                 feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor()),
                 cut_transforms=[],
             )
         else:
-            validate = SpeechSynthesisDataset(
-                get_text_token_collater(self.args.text_tokens),
+            validate = AudioToAudioDataset(
                 feature_input_strategy=_get_input_strategy(
                     self.args.input_strategy, self.args.dataset, cuts_valid
                 ),
@@ -398,8 +394,7 @@ class TtsDataModule:
 
     def test_dataloaders(self, cuts: CutSet) -> DataLoader:
         logging.debug("About to create test dataset")
-        test = SpeechSynthesisDataset(
-            get_text_token_collater(self.args.text_tokens),
+        test = AudioToAudioDataset(
             feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor())
             if self.args.on_the_fly_feats
             else _get_input_strategy(
@@ -426,15 +421,15 @@ class TtsDataModule:
     def train_cuts(self) -> CutSet:
         logging.info("About to get train cuts")
         return load_manifest_lazy(
-            self.args.manifest_dir / "cuts_train.jsonl.gz"
+            self.args.manifest_dir / "cuts_F02_train.jsonl.gz"
         )
 
     @lru_cache()
     def dev_cuts(self) -> CutSet:
         logging.info("About to get dev cuts")
-        return load_manifest_lazy(self.args.manifest_dir / "cuts_dev.jsonl.gz")
+        return load_manifest_lazy(self.args.manifest_dir / "cuts_F02_dev.jsonl.gz")
 
     @lru_cache()
     def test_cuts(self) -> CutSet:
         logging.info("About to get test cuts")
-        return load_manifest_lazy(self.args.manifest_dir / "cuts_test.jsonl.gz")
+        return load_manifest_lazy(self.args.manifest_dir / "cuts_F02_test.jsonl.gz")

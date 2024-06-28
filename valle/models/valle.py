@@ -22,7 +22,7 @@ from icefall.utils import make_pad_mask
 from torchmetrics.classification import MulticlassAccuracy
 
 from valle.data.input_strategies import PromptedFeatures
-from valle.modules.embedding import SinePositionalEmbedding, TokenEmbedding
+from valle.modules.embedding import SinePositionalEmbedding, TokenEmbedding, ContinuousEmbedding
 from valle.modules.transformer import (
     AdaptiveLayerNorm,
     LayerNorm,
@@ -88,6 +88,9 @@ class VALLF(nn.Module):
         # ID NUM_AUDIO_TOKENS     -> PAD
         # ID NUM_AUDIO_TOKENS + 1 -> BOS
         self.ar_audio_prepend_bos = prepend_bos
+
+        # self.ar_audio_embedding = ContinuousEmbedding(d_model, input_dim)
+        
         self.ar_audio_embedding = TokenEmbedding(
             d_model, NUM_AUDIO_TOKENS + 1 + int(prepend_bos)
         )
@@ -761,8 +764,8 @@ class VALLE(VALLF):
 
     def forward(
         self,
-        x: torch.Tensor,
-        x_lens: torch.Tensor,
+        x: Union[torch.Tensor, PromptedFeatures],
+        x_lens: Union[torch.Tensor, PromptedFeatures],
         y: Union[torch.Tensor, PromptedFeatures],
         y_lens: Union[torch.Tensor, PromptedFeatures],
         reduction: str = "sum",
@@ -772,46 +775,65 @@ class VALLE(VALLF):
         """
         Args:
           x:
-            A 2-D tensor of shape (N, S).
+            A 3-D tensor of a typical speaker utterance of shape (N, T, 8).
           x_lens:
-            A 1-D tensor of shape (N,). It contains the number of tokens in `x`
+            A 1-D tensor of a typical speaker utterance of shape (N,). It contains the number of tokens in `x`
             before padding.
           y:
-            A 3-D tensor of shape (N, T, 8).
+            A 3-D tensor of a atypical speaker utterance of shape (N, T, 8).
           y_lens:
-            A 1-D tensor of shape (N,). It contains the number of tokens in `x`
+            A 1-D tensor of a atypical speaker utterance of shape (N,). It contains the number of tokens in `x`
             before padding.
           train_stage:
             0: AR & NAR modules, 1: AR modules, 2: NAR modules
         Returns:
           Return the predicted audio code matrix, cross-entropy loss and Top-10 accuracy.
-        """
-        assert x.ndim == 2, x.shape
-        assert x_lens.ndim == 1, x_lens.shape
+        """   
 
         y_prompts_codes = None
-        if isinstance(y, PromptedFeatures):
+        x_prompts_codes = None
+
+        if isinstance(y, PromptedFeatures) and isinstance(x, PromptedFeatures):         
             y_prompts_codes, y = y.data
-            prompts_len, y_lens = y_lens.data
+            prompts_len, y_lens = y_lens.data   
+            y_prompts_codes = y_prompts_codes.type(torch.int64)
+
+            x_prompts_codes, x = x.data
+            prompts_len, x_lens = x_lens.data
+            x_prompts_codes = x_prompts_codes.type(torch.int64)
+
             assert prompts_len.min() == prompts_len.max()
             assert self.prefix_mode == 4
-            y_prompts_codes = y_prompts_codes.type(torch.int64)
+            
 
         assert y.ndim == 3, y.shape
         assert y_lens.ndim == 1, y_lens.shape
 
-        # NOTE: x has been padded in TextTokenCollater
+        assert x.ndim == 3, x.shape
+        assert x_lens.ndim == 1, x_lens.shape
+
         x_mask = make_pad_mask(x_lens).to(x.device)
         y_mask = make_pad_mask(y_lens).to(y.device)
         y_mask_int = y_mask.type(torch.int64)
+        x_mask_int = x_mask.type(torch.int64)
+        print(f"X: {type(x)}")
+        
+        # compare type of x to y
 
-        text = x
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
 
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
+        x, _ = self.pad_y_eos(
+            codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
+        )
 
+        x = self.ar_audio_embedding(x)  # Using the same audio embedding layer
+        x = self.ar_audio_prenet(x)
+        x = self.ar_audio_position(x)
+        
+        print(f"Y: {type(y)}")
         x_len = x_lens.max()
 
         metrics = {}
@@ -826,20 +848,16 @@ class VALLE(VALLF):
             ar_xy_padding_mask = xy_padding_mask
         # AR Decoder
         if train_stage in [0, 1]:
-            x = self.ar_text_embedding(text)
-            x = self.ar_text_prenet(x)
-            x = self.ar_text_position(x)
-
-            y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
+            # y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
 
             x_attn_mask = F.pad(
                 torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device),
-                (0, y_len),
+                (0, y_lens.max() + int(self.ar_audio_prepend_bos)),
                 value=True,
             )
             y_attn_mask = F.pad(
                 torch.triu(
-                    torch.ones(y_len, y_len, dtype=torch.bool, device=x.device),
+                    torch.ones(y_lens.max() + int(self.ar_audio_prepend_bos), y_lens.max() + int(self.ar_audio_prepend_bos), dtype=torch.bool, device=x.device),
                     diagonal=1,
                 ),
                 (x_len, 0),
