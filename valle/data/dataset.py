@@ -76,37 +76,62 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
         for transform in self.cut_transforms:
             cuts = transform(cuts)
 
-        audio, audio_lens = collate_audio(cuts)
+        # print(f"Processing cuts: {[cut.id for cut in cuts]}")
 
+        if False:  # not used
+            audio, audio_lens = collate_audio(cuts)
+        else:  # for sharing tokenized features in different machines
+            audio, audio_lens = None, None
+
+        # audio, audio_lens = collate_audio(cuts)
         audio_features, audio_features_lens = self.feature_input_strategy(cuts)
 
         for transform in self.feature_transforms:
             audio_features = transform(audio_features)
 
-         # Ensure 'target_recording' is properly converted to a Cut object
+        # Ensure 'target_recording' is properly converted to a Cut object
         target_audio_cuts = []
         for cut in cuts:
             target_recording = cut.custom['target_recording']
             if isinstance(target_recording, dict):
-                target_audio_cuts.append(MonoCut.from_dict(target_recording))
+                target_cut = MonoCut.from_dict(target_recording)
+                # print(f"Target MonoCut ID: {target_cut.id}, has_features: {target_cut.has_features}")
+                if not target_cut.has_features:
+                    print(f"Features missing for target recording: {target_cut}")
+                else:
+                    target_audio_cuts.append(target_cut)
             else:
                 target_audio_cuts.append(target_recording)
 
-        # 'custom' field contains the target audio information
-        target_audio_cuts = CutSet.from_cuts(target_audio_cuts)
-        target_audio, target_audio_lens = collate_audio(target_audio_cuts)
-        target_audio_features, target_audio_features_lens = self.feature_input_strategy(target_audio_cuts)
 
-        print("GET ITEM WAS CALLED")
-        print(f"utt_id: {[cut.id for cut in cuts]}")
-        print(f"audio: {audio}")
-        print(f"audio_lens: {audio_lens}")
-        print(f"audio_features: {audio_features}")
-        print(f"audio_features_lens: {audio_features_lens}")
-        print(f"target_audio: {target_audio}")
-        print(f"target_audio_lens: {target_audio_lens}")
-        print(f"target_audio_features: {target_audio_features}")
-        print(f"target_audio_features_lens: {target_audio_features_lens}")
+        # Convert list of MonoCut to CutSet
+        target_cuts = CutSet.from_cuts(target_audio_cuts)
+        # print(f"Number of target cuts: {len(target_cuts)}")
+            
+        # Apply the same transformations to target_cuts
+        for transform in self.cut_transforms:
+            target_cuts = transform(target_cuts)
+
+        assert all(cut.has_features for cut in target_cuts)
+
+        target_audio, target_audio_lens = None, None
+        target_audio_features, target_audio_features_lens = self.feature_input_strategy(target_cuts)
+
+        for transform in self.feature_transforms:
+            target_audio_features = transform(target_audio_features)
+
+        # print(f"Processed batch for cuts: {[cut.id for cut in cuts]}")
+
+        # print("GET ITEM WAS CALLED")
+        # print(f"utt_id: {[cut.id for cut in cuts]}")
+        # print(f"audio: {audio}")
+        # print(f"audio_lens: {audio_lens}")
+        # print(f"audio_features: {audio_features}")
+        # print(f"audio_features_lens: {audio_features_lens}")
+        # print(f"target_audio: {target_audio}")
+        # print(f"target_audio_lens: {target_audio_lens}")
+        # print(f"target_audio_features: {target_audio_features}")
+        # print(f"target_audio_features_lens: {target_audio_features_lens}")
 
         return {
             "utt_id": [cut.id for cut in cuts],

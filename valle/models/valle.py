@@ -816,24 +816,23 @@ class VALLE(VALLF):
         y_mask = make_pad_mask(y_lens).to(y.device)
         y_mask_int = y_mask.type(torch.int64)
         x_mask_int = x_mask.type(torch.int64)
-        print(f"X: {type(x)}")
         
         # compare type of x to y
 
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
+        x_codes = x.type(torch.int64) * (1 - x_mask_int.unsqueeze(dim=-1))
 
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
         x, _ = self.pad_y_eos(
-            codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
+            x_codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
 
         x = self.ar_audio_embedding(x)  # Using the same audio embedding layer
         x = self.ar_audio_prenet(x)
         x = self.ar_audio_position(x)
         
-        print(f"Y: {type(y)}")
         x_len = x_lens.max()
 
         metrics = {}
@@ -848,7 +847,7 @@ class VALLE(VALLF):
             ar_xy_padding_mask = xy_padding_mask
         # AR Decoder
         if train_stage in [0, 1]:
-            # y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
+            y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
 
             x_attn_mask = F.pad(
                 torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device),
@@ -911,10 +910,6 @@ class VALLE(VALLF):
                 weights=[1.0 / num_nar_layers] * num_nar_layers,
                 k=1,
             )[0]
-
-            x = self.nar_text_embedding(text)
-            x = self.nar_text_prenet(x)
-            x = self.nar_text_position(x)
 
             y_emb, prefix_len = self._prepare_prompts(
                 y, y_lens, codes, nar_stage, y_prompts_codes
@@ -988,7 +983,7 @@ class VALLE(VALLF):
         """
         Args:
           x:
-            A 2-D tensor of shape (1, S).
+            A 3-D tensor of shape (1, T, 8).
           x_lens:
             A 1-D tensor of shape (1,). It contains the number of tokens in `x`
             before padding.
@@ -1001,7 +996,7 @@ class VALLE(VALLF):
         Returns:
           Return the predicted audio code matrix.
         """
-        assert x.ndim == 2, x.shape
+        assert x.ndim == 3, x.shape
         assert x_lens.ndim == 1, x_lens.shape
         assert y.ndim == 3, y.shape
         assert y.shape[0] == 1, y.shape
@@ -1009,12 +1004,11 @@ class VALLE(VALLF):
         assert torch.all(x_lens > 0)
 
         # NOTE: x has been padded in TextTokenCollater
-        text = x
-        x = self.ar_text_embedding(text)
-        x = self.ar_text_prenet(x)
-        x = self.ar_text_position(x)
+        audio_features = x
+        x = self.audio_feature_prenet(audio_features)
+        x = self.audio_feature_position(x)
 
-        text_len = x_lens.max()
+        audio_len = x_lens.max()
         prompts = y
         prefix_len = y.shape[1]
 
@@ -1083,22 +1077,8 @@ class VALLE(VALLF):
             y[:, int(self.ar_audio_prepend_bos) :]
         )
 
-        if self.prefix_mode in [2, 4]:  # Exclude enrolled_phonemes
-            enrolled_len = enroll_x_lens.max().item()
-            # SOS + Synthesis Text + EOS
-            text = torch.concat(
-                [
-                    text[:, :1],
-                    text[:, enrolled_len - 1 :],
-                ],
-                dim=1,
-            )
-            text_len = text_len - (enrolled_len - 2)
-            assert text.shape[0] == 1
-
-        x = self.nar_text_embedding(text)
-        x = self.nar_text_prenet(x)
-        x = self.nar_text_position(x)
+        # x = self.nar_audio_feature_prenet(audio_features)
+        # x = self.nar_audio_feature_position(x)
 
         if self.prefix_mode == 0:
             for i, (predict_layer, embedding_layer) in enumerate(
@@ -1114,7 +1094,7 @@ class VALLE(VALLF):
                 xy_dec, _ = self.nar_decoder(
                     (xy_pos, self.nar_stage_embeddings[i].weight)
                 )
-                logits = predict_layer(xy_dec[:, text_len + prefix_len :])
+                logits = predict_layer(xy_dec[:, audio_len + prefix_len :])
 
                 samples = torch.argmax(logits, dim=-1)
                 codes.append(samples)
@@ -1143,7 +1123,7 @@ class VALLE(VALLF):
                 xy_dec, _ = self.nar_decoder(
                     (xy_pos, self.nar_stage_embeddings[i].weight)
                 )
-                logits = predict_layer(xy_dec[:, text_len + prefix_len :])
+                logits = predict_layer(xy_dec[:, audio_len + prefix_len :])
 
                 samples = torch.argmax(logits, dim=-1)
                 codes.append(samples)

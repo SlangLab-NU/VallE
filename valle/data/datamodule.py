@@ -316,6 +316,11 @@ class TtsDataModule:
                 cut_transforms=transforms,
                 feature_transforms=input_transforms,
             )
+        
+        logging.info("Checking feature availability after transformations")
+        for cut in cuts_train:
+            if not cut.has_features:
+                logging.warning(f"Cut {cut.id} is missing features")
 
         if self.args.bucketing_sampler:
             logging.info("Using DynamicBucketingSampler")
