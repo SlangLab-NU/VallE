@@ -181,7 +181,7 @@ def main():
         # https://github.com/lifeiteng/lifeiteng.github.com/blob/main/valle/prepare.py
         with open(args.text) as f:
             for line in f:
-                fields = line.strip().split("\t")
+                fields = line.strip().split(",")
                 assert len(fields) == 4
                 prompt_text, prompt_audio, text, audio_path = fields
                 logging.info(f"synthesize text: {text}")
