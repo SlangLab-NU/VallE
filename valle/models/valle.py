@@ -972,60 +972,39 @@ class VALLE(VALLF):
         return ((x, codes), total_loss, metrics)
 
     def inference(
-        self,
-        x: torch.Tensor,
-        x_lens: torch.Tensor,
-        y: torch.Tensor,
-        enroll_x_lens: torch.Tensor,
-        top_k: int = -100,
-        temperature: float = 1.0,
-    ) -> torch.Tensor:
+    self,
+    audio_prompts: torch.Tensor,
+    top_k: int = -100,
+    temperature: float = 1.0,
+) -> torch.Tensor:
         """
         Args:
-          x:
-            A 3-D tensor of shape (1, T, 8).
-          x_lens:
-            A 1-D tensor of shape (1,). It contains the number of tokens in `x`
-            before padding.
-          y:
-            A 3-D tensor of shape (1, T, 8).
-          top_k: (`optional`) int
+        audio_prompts:
+            A 3-D tensor of shape (1, T, D) representing the atypical speech.
+        top_k: (`optional`) int
             The number of highest probability tokens to keep for top-k-filtering. Default to -100.
-          temperature: (`optional`) float
-            The value used to module the next token probabilities. Must be strictly positive. Default to 1.0.
+        temperature: (`optional`) float
+            The value used to modulate the next token probabilities. Must be strictly positive. Default to 1.0.
         Returns:
-          Return the predicted audio code matrix.
+        Return the predicted typical speech audio code matrix.
         """
-        assert x.ndim == 3, x.shape
-        assert x_lens.ndim == 1, x_lens.shape
-        assert y.ndim == 3, y.shape
-        assert y.shape[0] == 1, y.shape
+        assert audio_prompts.ndim == 3, audio_prompts.shape
 
-        assert torch.all(x_lens > 0)
+        prompts = audio_prompts
+        prefix_len = audio_prompts.shape[1]
 
-        # NOTE: x has been padded in TextTokenCollater
-        audio_features = x
-        x = self.audio_feature_prenet(audio_features)
-        x = self.audio_feature_position(x)
-
-        audio_len = x_lens.max()
-        prompts = y
-        prefix_len = y.shape[1]
-
-        # AR Decoder
-        # TODO: Managing decoder steps avoid repetitive computation
         y = prompts[..., 0]
         if self.ar_audio_prepend_bos:
             y = F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
 
-        x_len = x_lens.max()
+        x_len = prompts.shape[1]
         x_attn_mask = torch.zeros((x_len, x_len), dtype=torch.bool)
 
         while True:
             y_emb = self.ar_audio_embedding(y)
             y_emb = self.ar_audio_prenet(y_emb)
             y_pos = self.ar_audio_position(y_emb)
-            xy_pos = torch.concat([x, y_pos], dim=1)
+            xy_pos = torch.concat([prompts, y_pos], dim=1)
 
             y_len = y.shape[1]
             x_attn_mask_pad = F.pad(
@@ -1056,14 +1035,8 @@ class VALLE(VALLF):
             if (
                 torch.argmax(logits, dim=-1)[0] == NUM_AUDIO_TOKENS
                 or samples[0, 0] == NUM_AUDIO_TOKENS
-                or (y.shape[1] - prompts.shape[1]) > x_lens.max() * 16
+                or (y.shape[1] - prompts.shape[1]) > x_len * 16
             ):
-                if prompts.shape[1] == y.shape[1]:
-                    raise SyntaxError(
-                        "well trained model shouldn't reach here."
-                    )
-
-                print(f"VALL-E EOS [{prompts.shape[1]} -> {y.shape[1]}]")
                 break
 
             y = torch.concat([y, samples], dim=1)
@@ -1077,59 +1050,26 @@ class VALLE(VALLF):
             y[:, int(self.ar_audio_prepend_bos) :]
         )
 
-        # x = self.nar_audio_feature_prenet(audio_features)
-        # x = self.nar_audio_feature_position(x)
+        for i, (predict_layer, embedding_layer) in enumerate(
+            zip(
+                self.nar_predict_layers,
+                self.nar_audio_embeddings[1:],
+            )
+        ):
+            y_pos = self.nar_audio_prenet(y_emb)
+            y_pos = self.nar_audio_position(y_pos)
+            xy_pos = torch.concat([prompts, y_pos], dim=1)
 
-        if self.prefix_mode == 0:
-            for i, (predict_layer, embedding_layer) in enumerate(
-                zip(
-                    self.nar_predict_layers,
-                    self.nar_audio_embeddings[1:],
-                )
-            ):
-                y_pos = self.nar_audio_prenet(y_emb)
-                y_pos = self.nar_audio_position(y_pos)
-                xy_pos = torch.concat([x, y_pos], dim=1)
+            xy_dec, _ = self.nar_decoder(
+                (xy_pos, self.nar_stage_embeddings[i].weight)
+            )
+            logits = predict_layer(xy_dec[:, x_len + prefix_len :])
 
-                xy_dec, _ = self.nar_decoder(
-                    (xy_pos, self.nar_stage_embeddings[i].weight)
-                )
-                logits = predict_layer(xy_dec[:, audio_len + prefix_len :])
+            samples = torch.argmax(logits, dim=-1)
+            codes.append(samples)
 
-                samples = torch.argmax(logits, dim=-1)
-                codes.append(samples)
-
-                if i < self.num_quantizers - 2:
-                    y_emb[:, :prefix_len] += embedding_layer(
-                        prompts[..., i + 1]
-                    )
-                    y_emb[:, prefix_len:] += embedding_layer(samples)
-        else:
-            for j in range(1, self.num_quantizers):
-                y_emb[:, :prefix_len] += self.nar_audio_embeddings[j](
-                    prompts[..., j]
-                )
-
-            for i, (predict_layer, embedding_layer) in enumerate(
-                zip(
-                    self.nar_predict_layers,
-                    self.nar_audio_embeddings[1:],
-                )
-            ):
-                y_pos = self.nar_audio_prenet(y_emb)
-                y_pos = self.nar_audio_position(y_pos)
-                xy_pos = torch.concat([x, y_pos], dim=1)
-
-                xy_dec, _ = self.nar_decoder(
-                    (xy_pos, self.nar_stage_embeddings[i].weight)
-                )
-                logits = predict_layer(xy_dec[:, audio_len + prefix_len :])
-
-                samples = torch.argmax(logits, dim=-1)
-                codes.append(samples)
-
-                if i < self.num_quantizers - 2:
-                    y_emb[:, prefix_len:] += embedding_layer(samples)
+            if i < self.num_quantizers - 2:
+                y_emb[:, prefix_len:] += embedding_layer(samples)
 
         assert len(codes) == self.num_quantizers
         return torch.stack(codes, dim=-1)

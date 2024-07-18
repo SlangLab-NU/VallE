@@ -49,40 +49,10 @@ def get_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument(
-        "--text-prompts",
+        "--atypical-audio",
         type=str,
         default="",
-        help="Text prompts which are separated by |.",
-    )
-
-    parser.add_argument(
-        "--audio-prompts",
-        type=str,
-        default="",
-        help="Audio prompts which are separated by | and should be aligned with --text-prompts.",
-    )
-
-    parser.add_argument(
-        "--text",
-        type=str,
-        default="To get up and running quickly just follow the steps below.",
-        help="Text to be synthesized.",
-    )
-
-    # model
-    # add_model_arguments(parser)
-    # parser.add_argument(
-    #     "--text-tokens",
-    #     type=str,
-    #     default="data/tokenized/unique_text_tokens.k2symbols",
-    #     help="Path to the unique text tokens file.",
-    # )
-
-    parser.add_argument(
-        "--text-extractor",
-        type=str,
-        default="espeak",
-        help="espeak or pypinyin or pypinyin_initials_finals",
+        help="Atypical audio prompts which are separated by |.",
     )
 
     parser.add_argument(
@@ -113,13 +83,6 @@ def get_args():
         help="The temperature of AR Decoder top_k sampling.",
     )
 
-    parser.add_argument(
-        "--continual",
-        type=str2bool,
-        default=False,
-        help="Do continual task.",
-    )
-
     return parser.parse_args()
 
 
@@ -139,134 +102,37 @@ def load_model(checkpoint, device):
     model.to(device)
     model.eval()
 
-    text_tokens = args.text_tokens
-
-    return model, text_tokens
+    return model
 
 
 @torch.no_grad()
 def main():
     args = get_args()
-    text_tokenizer = TextTokenizer(backend=args.text_extractor)
-
-    device = torch.device("cpu")
-    if torch.cuda.is_available():
-        device = torch.device("cuda", 0)
-    model, text_tokens = load_model(args.checkpoint, device)
-    text_collater = get_text_token_collater(text_tokens)
-
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = load_model(args.checkpoint, device)
     audio_tokenizer = AudioTokenizer()
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    text_prompts = " ".join(args.text_prompts.split("|"))
-
-    audio_prompts = []
-    if args.audio_prompts:
-        for n, audio_file in enumerate(args.audio_prompts.split("|")):
+    atypical_audio_prompts = []
+    if args.atypical_audio:
+        for n, audio_file in enumerate(args.atypical_audio.split(",")):
             encoded_frames = tokenize_audio(audio_tokenizer, audio_file)
-            if False:
-                samples = audio_tokenizer.decode(encoded_frames)
-                torchaudio.save(
-                    f"{args.output_dir}/p{n}.wav", samples[0], 24000
-                )
+            atypical_audio_prompts.append(encoded_frames[0][0])
 
-            audio_prompts.append(encoded_frames[0][0])
+        atypical_audio_prompts = torch.concat(atypical_audio_prompts, dim=-1).transpose(2, 1)
+        atypical_audio_prompts = atypical_audio_prompts.to(device)
 
-        assert len(args.text_prompts.split("|")) == len(audio_prompts)
-        audio_prompts = torch.concat(audio_prompts, dim=-1).transpose(2, 1)
-        audio_prompts = audio_prompts.to(device)
+    # Synthesize typical speech from atypical speech
+    encoded_frames = model.inference(
+        atypical_audio_prompts,
+        top_k=args.top_k,
+        temperature=args.temperature,
+    )
 
-    if os.path.isfile(args.text):  # for demos
-        # https://github.com/lifeiteng/lifeiteng.github.com/blob/main/valle/prepare.py
-        with open(args.text) as f:
-            for line in f:
-                fields = line.strip().split(",")
-                assert len(fields) == 4
-                prompt_text, prompt_audio, text, audio_path = fields
-                logging.info(f"synthesize text: {text}")
-                text_tokens, text_tokens_lens = text_collater(
-                    [
-                        tokenize_text(
-                            text_tokenizer, text=f"{prompt_text} {text}".strip()
-                        )
-                    ]
-                )
-                _, enroll_x_lens = text_collater(
-                    [
-                        tokenize_text(
-                            text_tokenizer, text=f"{prompt_text}".strip()
-                        )
-                    ]
-                )
-
-                audio_prompts = tokenize_audio(audio_tokenizer, prompt_audio)
-                audio_prompts = audio_prompts[0][0].transpose(2, 1).to(device)
-
-                # synthesis
-                encoded_frames = model.inference(
-                    text_tokens.to(device),
-                    text_tokens_lens.to(device),
-                    audio_prompts,
-                    enroll_x_lens=enroll_x_lens,
-                    top_k=args.top_k,
-                    temperature=args.temperature,
-                )
-
-                samples = audio_tokenizer.decode(
-                    [(encoded_frames.transpose(2, 1), None)]
-                )
-                # store
-                torchaudio.save(audio_path, samples[0].cpu(), 24000)
-        return
-
-    for n, text in enumerate(args.text.split("|")):
-        logging.info(f"synthesize text: {text}")
-        text_tokens, text_tokens_lens = text_collater(
-            [
-                tokenize_text(
-                    text_tokenizer, text=f"{text_prompts} {text}".strip()
-                )
-            ]
-        )
-
-        # synthesis
-        if args.continual:
-            assert text == ""
-            encoded_frames = model.continual(
-                text_tokens.to(device),
-                text_tokens_lens.to(device),
-                audio_prompts,
-            )
-        else:
-            enroll_x_lens = None
-            if text_prompts:
-                _, enroll_x_lens = text_collater(
-                    [
-                        tokenize_text(
-                            text_tokenizer, text=f"{text_prompts}".strip()
-                        )
-                    ]
-                )
-            encoded_frames = model.inference(
-                text_tokens.to(device),
-                text_tokens_lens.to(device),
-                audio_prompts,
-                enroll_x_lens=enroll_x_lens,
-                top_k=args.top_k,
-                temperature=args.temperature,
-            )
-
-        if audio_prompts != []:
-            samples = audio_tokenizer.decode(
-                [(encoded_frames.transpose(2, 1), None)]
-            )
-            # store
-            torchaudio.save(
-                f"{args.output_dir}/{n}.wav", samples[0].cpu(), 24000
-            )
-        else:  # Transformer
-            pass
+    samples = audio_tokenizer.decode([(encoded_frames.transpose(2, 1), None)])
+    # Save the output audio
+    torchaudio.save(f"{args.output_dir}/output.wav", samples[0].cpu(), 24000)
 
 
 torch.set_num_threads(1)
