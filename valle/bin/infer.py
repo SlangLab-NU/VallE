@@ -119,7 +119,7 @@ def main():
         for n, audio_file in enumerate(args.atypical_audio.split(",")):
             encoded_frames = tokenize_audio(audio_tokenizer, audio_file)
             atypical_audio_prompts.append(encoded_frames[0][0])
-
+            print(f"Atypical: {encoded_frames[0][0].shape}")
         atypical_audio_prompts = torch.concat(atypical_audio_prompts, dim=-1).transpose(2, 1)
         atypical_audio_prompts = atypical_audio_prompts.to(device)
 
@@ -129,7 +129,7 @@ def main():
         top_k=args.top_k,
         temperature=args.temperature,
     )
-
+    print(f"encoded_frames size: {encoded_frames}")
     samples = audio_tokenizer.decode([(encoded_frames.transpose(2, 1), None)])
     # Save the output audio
     torchaudio.save(f"{args.output_dir}/output.wav", samples[0].cpu(), 24000)
