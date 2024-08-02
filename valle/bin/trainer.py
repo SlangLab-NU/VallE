@@ -816,25 +816,28 @@ def train_one_epoch(
             # Calculate validation loss in Rank 0
             model.eval()
             logging.info("Computing validation loss")
-            with torch.cuda.amp.autocast(dtype=dtype):
-                valid_info = compute_validation_loss(
-                    params=params,
-                    model=model,
-                    valid_dl=valid_dl,
-                    world_size=world_size,
+            try:
+                with torch.cuda.amp.autocast(dtype=dtype):
+                    valid_info = compute_validation_loss(
+                        params=params,
+                        model=model,
+                        valid_dl=valid_dl,
+                        world_size=world_size,
+                    )
+                logging.info(
+                    f"Epoch {params.cur_epoch}, validation: {valid_info}"
                 )
-            logging.info(
-                f"Epoch {params.cur_epoch}, validation: {valid_info}"
-            )
-            logging.info(
-                f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
-            )
-
-            if tb_writer is not None:
-                valid_info.write_summary(
-                    tb_writer, "train/valid_", params.batch_idx_train
+                logging.info(
+                    f"Maximum memory allocated so far is {torch.cuda.max_memory_allocated()//1000000}MB"
                 )
+            
 
+                if tb_writer is not None:
+                    valid_info.write_summary(
+                        tb_writer, "train/valid_", params.batch_idx_train
+                    )
+            except Exception as e:
+                print(f"Error running validation loss {e}")
             model.train()
 
     loss_value = tot_loss["loss"] / tot_loss["frames"]

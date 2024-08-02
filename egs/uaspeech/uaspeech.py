@@ -120,41 +120,23 @@ def standardize_key(key):
 
 def create_speaker_speaker_pair(
     corpus_dir: Pathlike,
-    typical_speaker: str,
-    atypical_speaker: str,
+    control_speakers: List[str],
+    atypical_speakers: List[str],
     alignments_dir: Optional[Pathlike] = None,
     dataset_parts: Union[str, Sequence[str]] = "auto",
-    output_dir: Optional[Pathlike] = None, 
+    output_dir: Optional[Pathlike] = None,
     num_jobs: int = 1,
-)-> Dict[str, Dict[str, Union[RecordingSet, RecordingSet]]]:
-    """
-    Returns a manifest which consists of a RecordingSet pair. The pair contains a typical speaker
-    and an atypical speaker linking to an audio recording of the same utterance. This is used for establishing 
-    parallel model training.
-
-    :param corpus_dir: Pathlike, the path of the data dir.
-    :param dataset_parts: string or sequence of strings representing dataset part names, e.g. 'normalized', 'noisereduced', 'original'.
-        By default we will infer which parts are available in ``corpus_dir``.
-    :param output_dir: Pathlike, the path where to write the manifests.
-    :param num_jobs: int, number of parallel threads used for 'parse_utterance' calls.
-    :return: a Dict whose key is the dataset part, and the value is Dicts with the keys 'typical_audio' and 'atypical_audio'.
-    """
+) -> Dict[str, Dict[str, Union[RecordingSet, RecordingSet]]]:
     corpus_dir = Path(corpus_dir)
     corpus_audio_dir = Path(os.path.join(corpus_dir, "audio"))
     alignments_dir = Path(alignments_dir) if alignments_dir is not None else corpus_audio_dir
     assert corpus_audio_dir.is_dir(), f"No such directory: {corpus_audio_dir}"
 
     if dataset_parts == "auto":
-        print("I went down the auto path")
         dataset_parts = set(UASPEECH_FULL).intersection(path.name for path in corpus_audio_dir.glob("*"))
-        
         if not dataset_parts:
-            raise ValueError(
-                f"Could not find any of UASpeech dataset parts in: {corpus_audio_dir}"
-            )
-    # Here we can specify a specific processed batch of speaker data
+            raise ValueError(f"Could not find any of UASpeech dataset parts in: {corpus_audio_dir}")
     elif isinstance(dataset_parts, str):
-        print("dataset = " + dataset_parts)
         dataset_parts = [dataset_parts]
     logger.info(f"dataset_parts: {dataset_parts}")
     manifests = {}
@@ -162,10 +144,7 @@ def create_speaker_speaker_pair(
     if output_dir is not None:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
-        # Maybe the manifests already exist: we can read them and save a bit of preparation time.
-        manifests = read_manifests_if_cached(
-            dataset_parts=dataset_parts, output_dir=output_dir
-        )
+        manifests = read_manifests_if_cached(dataset_parts=dataset_parts, output_dir=output_dir)
 
     metadata_mlf_path = os.path.join(corpus_dir, "mlf")
 
@@ -176,66 +155,51 @@ def create_speaker_speaker_pair(
 
     with ThreadPoolExecutor(num_jobs) as ex:
         for part in tqdm(dataset_parts, desc="Dataset parts"):
-            if not part.startswith("."): # Avoid hidden files
+            if not part.startswith("."):  # Avoid hidden files
                 logging.info(f"Processing UASpeech subset: {part}")
-                # Check if part has been prepared already
                 if manifests_exist(part=part, output_dir=output_dir):
                     logging.info(f"UASpeech subset: {part} already prepared - skipping.")
                     continue
-                
-                # assign metadata file for speaker
-                typical_speaker_path =  os.path.join(os.path.join(metadata_mlf_path, typical_speaker), typical_speaker + METADATA_FILE)
-                atypical_speaker_path = os.path.join(os.path.join(metadata_mlf_path, atypical_speaker), atypical_speaker + METADATA_FILE)
-                
-                # Ensure both metadata files exist
-                assert os.path.isfile(typical_speaker_path), f"No such file: {typical_speaker_path}"
-                assert os.path.isfile(atypical_speaker_path), f"No such file: {atypical_speaker_path}"
 
-                typical_utterances = {}
-                atypical_utterances = {}
+                for typical_speaker, atypical_speaker in tqdm(zip(control_speakers, atypical_speakers), desc="Preparing Speaker Pair"):
+                    typical_speaker_path = os.path.join(metadata_mlf_path, typical_speaker, typical_speaker + METADATA_FILE)
+                    atypical_speaker_path = os.path.join(metadata_mlf_path, atypical_speaker, atypical_speaker + METADATA_FILE)
 
-                typical_utterances = extract_mlf_information(typical_utterances, typical_speaker_path)
-                atypical_utterances = extract_mlf_information(atypical_utterances, atypical_speaker_path)
+                    assert os.path.isfile(typical_speaker_path), f"No such file: {typical_speaker_path}"
+                    assert os.path.isfile(atypical_speaker_path), f"No such file: {atypical_speaker_path}"
 
-                # Remove 'C' from typical utterances
-                standardize_typical_keys = {standardize_key(key): key for key in typical_utterances}
-                # Find intersection between two dictionaries
-                intersection_utterances = set(standardize_typical_keys.keys()).intersection(set(atypical_utterances.keys()))
-                # Set typical utterances back to including 'C'
-                typical_utterances = {standardize_typical_keys[key]: typical_utterances[standardize_typical_keys[key]] for key in intersection_utterances}
-                atypical_utterances = {key: atypical_utterances[key] for key in intersection_utterances}
-                
-                assert len(typical_utterances) == len(atypical_utterances), f"Length Mismatch... Typical: {len(typical_utterances)} and Atypical: {len(atypical_utterances)}"
-                logger.info(f"Length of typical: {len(typical_utterances)}, Length of atypical: {len(atypical_utterances)}")
+                    typical_utterances = extract_mlf_information({}, typical_speaker_path)
+                    atypical_utterances = extract_mlf_information({}, atypical_speaker_path)
 
-                for key, value in tqdm(atypical_utterances.items(), desc="Preparing parallel speakers"):
-                    # Since the two dictionaries are the same other than a 'C' in front of the key for typical speaker
-                    # This iterates through one dictionary to create recording set for both speakers
-                    try:
-                        atypical_recording_id = value + "_" + key
-                        atypical_audio_path = corpus_audio_dir / part / atypical_speaker /f"{key}.wav"
-                        atypical_recording = Recording.from_file(
-                            atypical_audio_path, 
-                            atypical_recording_id
-                        )
-                        if "_B2_" in atypical_recording_id:
-                            atypical_recording_test_set.append(atypical_recording)
-                        else:
-                            atypical_recording_train_set.append(atypical_recording)
+                    standardize_typical_keys = {standardize_key(key): key for key in typical_utterances}
+                    intersection_utterances = set(standardize_typical_keys.keys()).intersection(set(atypical_utterances.keys()))
 
-                        typical_recording_id = value + "_C" + key
-                        typical_audio_path = corpus_audio_dir / part / typical_speaker /f"C{key}.wav"
-                        typical_recording = Recording.from_file(
-                            typical_audio_path,
-                            typical_recording_id
-                        )
-                        if "_B2_" in typical_recording_id:
-                            typical_recording_test_set.append(typical_recording)
-                        else:
-                            typical_recording_train_set.append(typical_recording)
+                    typical_utterances = {standardize_typical_keys[key]: typical_utterances[standardize_typical_keys[key]] for key in intersection_utterances}
+                    atypical_utterances = {key: atypical_utterances[key] for key in intersection_utterances}
 
-                    except Exception as err:
-                                logger.error(err)
+                    assert len(typical_utterances) == len(atypical_utterances), f"Length Mismatch... Typical: {len(typical_utterances)} and Atypical: {len(atypical_utterances)}"
+                    logger.info(f"Length of typical: {len(typical_utterances)}, Length of atypical: {len(atypical_utterances)}")
+
+                    for key, value in tqdm(atypical_utterances.items(), desc="Preparing parallel speakers"):
+                        try:
+                            atypical_recording_id = value + "_" + key
+                            atypical_audio_path = corpus_audio_dir / part / atypical_speaker / f"{key}.wav"
+                            atypical_recording = Recording.from_file(atypical_audio_path, atypical_recording_id)
+                            if "_B2_" in atypical_recording_id:
+                                atypical_recording_test_set.append(atypical_recording)
+                            else:
+                                atypical_recording_train_set.append(atypical_recording)
+
+                            typical_recording_id = value + "_C" + key
+                            typical_audio_path = corpus_audio_dir / part / typical_speaker / f"C{key}.wav"
+                            typical_recording = Recording.from_file(typical_audio_path, typical_recording_id)
+                            if "_B2_" in typical_recording_id:
+                                typical_recording_test_set.append(typical_recording)
+                            else:
+                                typical_recording_train_set.append(typical_recording)
+
+                        except Exception as err:
+                            logger.error(err)
 
     typical_recording_train_set = RecordingSet.from_recordings(typical_recording_train_set)
     atypical_recording_train_set = RecordingSet.from_recordings(atypical_recording_train_set)
@@ -243,20 +207,18 @@ def create_speaker_speaker_pair(
     typical_recording_test_set = RecordingSet.from_recordings(typical_recording_test_set)
     atypical_recording_test_set = RecordingSet.from_recordings(atypical_recording_test_set)
 
-    # Cannot utilize fix_manifests as it requires a supervision. I could add one to ensure recording is validated and remove it later
-    # typical_recording_set= fix_manifests(typical_recording_set)
-
-    # Need to separate control recordings and impaired speakers
     if output_dir is not None:
-        typical_recording_train_set.to_file(output_dir / "uaspeech_recordings_CF02_train.jsonl.gz")
-        atypical_recording_train_set.to_file(output_dir / "uaspeech_recordings_F02_train.jsonl.gz")
-        typical_recording_test_set.to_file(output_dir / "uaspeech_recordings_CF02_test.jsonl.gz")
-        atypical_recording_test_set.to_file(output_dir / "uaspeech_recordings_F02_test.jsonl.gz")
+        typical_recording_train_set.to_file(output_dir / f"uaspeech_recordings_control_speakers_train.jsonl.gz")
+        atypical_recording_train_set.to_file(output_dir / f"uaspeech_recordings_atypical_speakers_train.jsonl.gz")
+        typical_recording_test_set.to_file(output_dir / f"uaspeech_recordings_control_speakers_test.jsonl.gz")
+        atypical_recording_test_set.to_file(output_dir / f"uaspeech_recordings_atypical_speakers_test.jsonl.gz")
 
-    return {"typical_train_recordings": typical_recording_train_set,
-            "atypical_train_recordings": atypical_recording_train_set,
-            "typical_test_recordings": typical_recording_test_set,
-            "atypical_test_recordings": atypical_recording_test_set}
+    return {
+        "typical_train_recordings": typical_recording_train_set,
+        "atypical_train_recordings": atypical_recording_train_set,
+        "typical_test_recordings": typical_recording_test_set,
+        "atypical_test_recordings": atypical_recording_test_set,
+    }
 
 # OLD VERSION
 def prepare_uaspeech(
@@ -492,17 +454,21 @@ def prepare_uaspeech(
 # typical = {}
 # PATH = "/home/data1/data/UASpeech/mlf/CF02/CF02_word.mlf"
 # extract_mlf_information(typical, PATH)
+control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM09", "CM10", "CM12", "CM13"]
+atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M09", "M10", "M11", "M12"]
 
-sets = create_speaker_speaker_pair(UASPEECH_PATH, "CF02", "F02", None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
-typical_train = sets["typical_train_recordings"]
-atypical_train = sets["atypical_train_recordings"]
-typical_test = sets["typical_test_recordings"]
-atypical_test = sets["atypical_test_recordings"]
+create_speaker_speaker_pair(UASPEECH_PATH, control_speakers, atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
 
-print(f"Typical train length {len(typical_train)}")
-print(f"Atypical train length {len(atypical_train)}")
-print(f"Typical test length {len(typical_test)}")
-print(f"Atypical test length {len(atypical_test)}")
+# sets = create_speaker_speaker_pair(UASPEECH_PATH, "CF02", "F02", None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
+# typical_train = sets["typical_train_recordings"]
+# atypical_train = sets["atypical_train_recordings"]
+# typical_test = sets["typical_test_recordings"]
+# atypical_test = sets["atypical_test_recordings"]
+
+# print(f"Typical train length {len(typical_train)}")
+# print(f"Atypical train length {len(atypical_train)}")
+# print(f"Typical test length {len(typical_test)}")
+# print(f"Atypical test length {len(atypical_test)}")
 
 
 # sets = prepare_uaspeech(UASPEECH_PATH, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")

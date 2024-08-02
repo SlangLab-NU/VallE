@@ -127,10 +127,10 @@ def main():
     # Manifest names need to include 'uaspeech_recordings_{dataset_part}' or 'uaspeech_supervision_{dataset_part}'
     elif dataset_parts == "uaspeech":
         dataset_parts = [
-            "CF02_train",
-            "F02_train",
-            "CF02_test",
-            "F02_test",
+            "control_speakers_train",
+            "atypical_speakers_train",
+            "control_speakers_test",
+            "atypical_speakers_test",
         ]
     else:
         dataset_parts = dataset_parts.replace("-p", "").strip().split(" ")
@@ -223,11 +223,14 @@ def main():
         @param tgt: dictionary containing the target utterances and audio file paths.
         @return: returns the cutset of the target with the extracted audio features
         """
+
         for tgt_partition, tgt_cuts in tgt.items():
+            
             tgt_speaker = get_speaker(tgt_partition)
 
             # AudioTokenizer
             if args.audio_extractor:
+                print("Audio extractor called")
                 if args.audio_extractor == "Encodec":
                     tgt_storage_path = (
                         f"{args.output_dir}/{args.prefix}_encodec_{tgt_partition}"
@@ -238,9 +241,12 @@ def main():
                     )
 
                 if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
+                    print("Prefix check")
                     tgt_cuts = tgt_cuts.resample(24000)
 
                 # extract_audio_features(tgt_cuts, tgt_storage_path)
+        if tgt_cuts is None or tgt_storage_path is None:
+            raise ValueError("The audio extractor settings or the prefix did not match the expected conditions.")
         return extract_audio_features(tgt_cuts, tgt_storage_path)
 
     #LEFT OFF FROM TUESDAY. NEED TO MAKE SURE TARGET AUDIO PATH IS BEING ADDED
@@ -298,12 +304,12 @@ def main():
                 )
 
                 if "train" in partition:
-                    if "C" in partition:
+                    if "control" in partition:
                         target_train_cuts[partition] = cut_set
                     else:
                         source_train_cuts[partition] = cut_set
                 elif "test" in partition:
-                    if "C" in partition:
+                    if "control" in partition:
                         target_test_cuts[partition] = cut_set
                     else:
                         source_test_cuts[partition] = cut_set
@@ -313,58 +319,6 @@ def main():
                 cut_set = m["cuts"]
         process_src_tgt_cuts(source_train_cuts, target_train_cuts)
         process_src_tgt_cuts(source_test_cuts, target_test_cuts)
-
-        # Once speaker pair file is made then run it through encodec
-            
-
-            # TextTokenizer
-    #         if args.text_extractor:
-    #             if (
-    #                 args.prefix == "baker"
-    #                 and args.text_extractor == "labeled_pinyin"
-    #             ):
-    #                 for c in tqdm(cut_set):
-    #                     phonemes = c.supervisions[0].custom["tokens"]["text"]
-    #                     unique_symbols.update(phonemes)
-    #             else:
-    #                 for c in tqdm(cut_set):
-    #                     if args.prefix == "ljspeech":
-    #                         text = c.supervisions[0].custom["normalized_text"]
-    #                         text = text.replace("”", '"').replace("“", '"')
-    #                         phonemes = tokenize_text(text_tokenizer, text=text)
-    #                     elif args.prefix == "aishell":
-    #                         phonemes = tokenize_text(
-    #                             text_tokenizer, text=c.supervisions[0].text
-    #                         )
-    #                         c.supervisions[0].custom = {}
-    #                     elif args.prefix == "uaspeech":
-    #                         if c.supervisions[0].text != None:
-    #                             phonemes = tokenize_text(
-    #                                 text_tokenizer, text=c.supervisions[0].text
-    #                             )
-    #                             c.supervisions[0].custom = {}
-    #                         else:
-    #                             logging.info(f"Supervision empty: {c}")
-    #                     else:
-    #                         assert args.prefix == "libritts"
-    #                         phonemes = tokenize_text(
-    #                             text_tokenizer, text=c.supervisions[0].text
-    #                         )
-    #                     c.supervisions[0].custom["tokens"] = {"text": phonemes}
-    #                     unique_symbols.update(phonemes)
-
-    #         cuts_filename = f"{prefix}cuts_{partition}.{args.suffix}"
-    #         cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
-
-    # if args.text_extractor:
-    #     unique_phonemes = SymbolTable()
-    #     for s in sorted(list(unique_symbols)):
-    #         unique_phonemes.add(s)
-    #     logging.info(f"{len(unique_symbols)} unique phonemes: {unique_symbols}")
-
-    #     unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
-    #     unique_phonemes.to_file(unique_phonemes_file)
-
 
 if __name__ == "__main__":
     formatter = (

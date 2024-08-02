@@ -51,7 +51,7 @@ def main():
     speaker = args.speaker
     for part in ["train", "dev", "test"]:
         print(f"##  {part}")
-        cuts = load_manifest_lazy(manifest_dir / f"cuts_{speaker}_{part}.jsonl.gz") # cuts_{part}.jsonl.gz
+        cuts = load_manifest_lazy(manifest_dir / f"cuts_atypical_speakers_{part}.jsonl.gz") # cuts_{part}.jsonl.gz
         cuts.describe()
         print("\n")
 
