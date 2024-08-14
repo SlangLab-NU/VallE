@@ -71,7 +71,11 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
         self.feature_transforms = feature_transforms
 
     def __getitem__(self, cuts: CutSet) -> Dict[str, torch.tensor]:
-        
+        for cut in cuts:
+            if cut.custom == None or cut.custom == {}:
+                print(f"FOUND EMPTY CUT: {cut}")
+        cuts = [cut for cut in cuts if cut.custom is not None and cut.custom != {}]
+        cuts = CutSet.from_cuts(cuts)
         validate_for_audio_to_audio(cuts)
 
         for transform in self.cut_transforms:
@@ -233,7 +237,7 @@ def validate_for_audio_to_audio(cuts: CutSet) -> None:
         if cut.custom is None:
             raise ValueError(f"The 'custom' attribute of the cut object is None. It should be initialized as an empty dictionary. for cut: {cut}")
         if 'target_recording' not in cut.custom:
-            raise ValueError("'target_recording' key is missing in the 'custom' attribute of the cut object.")
+            raise ValueError(f"'target_recording' key is missing in the 'custom' attribute of the cut object. {cut}")
         assert (
             'target_recording' in cut.custom
         ), "Each cut must have a 'target_recording' in its custom field."

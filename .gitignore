@@ -28,5 +28,9 @@ egs/uaspeech/tensorboard_stage1/*
 egs/uaspeech/tensorboard_stage2/*
 egs/uaspeech/egs/uaspeech/model.txt
 egs/uaspeech/uaspeech/*
+egs/uaspeech/uaspeech_run2/*
 egs/uaspeech/src_tgt_cuts.json
 egs/uaspeech/src_tgt_cuts.jsonl.gz
+egs/uaspeech/output.json
+egs/uaspeech/h5reader.py
+egs/uaspeech/atypical_speakers_testH5.json

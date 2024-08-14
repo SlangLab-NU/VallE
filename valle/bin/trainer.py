@@ -669,7 +669,7 @@ def train_one_epoch(
 
         params.batch_idx_train += 1
         batch_size = len(batch["utt_id"]) # Changed from 'text'
-
+        
         try:
             with torch.cuda.amp.autocast(dtype=dtype, enabled=enabled):
                 _, loss, loss_info = compute_loss(
@@ -1157,7 +1157,7 @@ def scan_pessimistic_batches_for_oom(
             print(f"Skipping already processed batch for criterion: {criterion}")
             continue
 
-        print(f"LOADING BATCH\n{criterion}\n{cuts}")
+        # print(f"LOADING BATCH\n{criterion}\n{cuts}")
         try:
             batch = train_dl.dataset[cuts]
 

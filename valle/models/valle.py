@@ -789,7 +789,7 @@ class VALLE(VALLF):
         Returns:
           Return the predicted audio code matrix, cross-entropy loss and Top-10 accuracy.
         """   
-
+        
         y_prompts_codes = None
         x_prompts_codes = None
 
@@ -832,7 +832,6 @@ class VALLE(VALLF):
         x = self.ar_audio_embedding(x)  # Using the same audio embedding layer
         x = self.ar_audio_prenet(x)
         x = self.ar_audio_position(x)
-        
         x_len = x_lens.max()
 
         metrics = {}
@@ -880,7 +879,6 @@ class VALLE(VALLF):
             y_emb = self.ar_audio_embedding(y)
             y_emb = self.ar_audio_prenet(y_emb)
             y_pos = self.ar_audio_position(y_emb)
-
             xy_pos = torch.concat([x, y_pos], dim=1)
 
             xy_dec, _ = self.ar_decoder(
@@ -890,13 +888,12 @@ class VALLE(VALLF):
                 # is_causal=True,
             )
             logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
-            # loss
+            
             total_loss = F.cross_entropy(logits, targets, reduction=reduction)
-
+            # Performs Multiclass accuracy
             metrics["ArTop10Accuracy"] = self.ar_accuracy_metric(
                 logits.detach(), targets
             ).item() * y_lens.sum().type(torch.float32)
-
         if self.num_quantizers == 1:
             return ((x, codes), total_loss, metrics)
 
@@ -1068,7 +1065,7 @@ class VALLE(VALLF):
             print(f"logits size after NAR decoder: {logits.size()}")
 
             samples = torch.argmax(logits, dim=-1)
-            print(f"NAR samples size: {samples.size()} and samples: {samples}")
+            print(f"NAR samples size: {samples.size()}")
             
             codes.append(samples)
 
@@ -1077,7 +1074,7 @@ class VALLE(VALLF):
                 y_emb += embedding_layer(samples)
 
         assert len(codes) == self.num_quantizers
-        print(f"Final output size: {torch.stack(codes, dim=-1)}")
+        print(f"Final output size: {torch.stack(codes, dim=-1).shape}")
         return torch.stack(codes, dim=-1)
 
     def continual(

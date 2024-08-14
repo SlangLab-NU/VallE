@@ -93,7 +93,8 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
 
   total_cuts_test=$(zcat ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz | wc -l)
   mid_index_test=$((total_cuts_test / 2))
-
+  echo ${total_cuts_test}
+  echo ${mid_index_test}
   # dev typical
   lhotse subset --last ${mid_index_test}\
     ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \

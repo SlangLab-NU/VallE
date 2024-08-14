@@ -187,7 +187,7 @@ def main():
         @param source_prefix: The prefix of the speaker (i.e., F02_train)
         @return: String representation of the speaker
         """
-        return prefix.split("_")[0]
+        return prefix.split("_")[1]
     
     def extract_audio_features(speaker_cuts, storage_path):
         """
@@ -197,6 +197,9 @@ def main():
         @return: the updated cutset
         """
         with torch.no_grad():
+            initial_count = len(speaker_cuts)
+            print(f"Initial number of cuts: {initial_count}")
+            initial_ids = [cut.id for cut in speaker_cuts]
             if torch.cuda.is_available() and args.audio_extractor == "Encodec":
                 speaker_cuts = speaker_cuts.compute_and_store_features_batch(
                     extractor=audio_extractor,
@@ -215,6 +218,10 @@ def main():
                     executor=ex,
                     storage_type=NumpyHdf5Writer,
                 )
+            final_count = len(speaker_cuts)
+            final_ids = [cut.id for cut in speaker_cuts]
+            print(f"Final number of cuts after feature extraction: {final_count}")
+            print(f"Missing cut IDs: {set(initial_ids) - set(final_ids)}")
         return speaker_cuts
 
     def extract_target_features(tgt):
@@ -225,7 +232,7 @@ def main():
         """
 
         for tgt_partition, tgt_cuts in tgt.items():
-            
+            print(f" before processing: {len(tgt_cuts)}")
             tgt_speaker = get_speaker(tgt_partition)
 
             # AudioTokenizer
@@ -243,13 +250,12 @@ def main():
                 if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
                     print("Prefix check")
                     tgt_cuts = tgt_cuts.resample(24000)
-
+                    print(f" After processing: {len(tgt_cuts)}")
                 # extract_audio_features(tgt_cuts, tgt_storage_path)
         if tgt_cuts is None or tgt_storage_path is None:
             raise ValueError("The audio extractor settings or the prefix did not match the expected conditions.")
         return extract_audio_features(tgt_cuts, tgt_storage_path)
 
-    #LEFT OFF FROM TUESDAY. NEED TO MAKE SURE TARGET AUDIO PATH IS BEING ADDED
     def process_src_tgt_cuts(src, tgt):
         """
         Extracts audio features of the source speaker and pairs it with the features of the target speaker
@@ -259,7 +265,7 @@ def main():
         """
         
         tgt_cuts = extract_target_features(tgt)
-
+        
         for src_partition, src_cuts in src.items():
             src_speaker = get_speaker(src_partition)
 
@@ -281,14 +287,27 @@ def main():
                 
                  # Extract features for the source cuts
                 src_cuts = extract_audio_features(src_cuts, src_storage_path)
-
+                print(f" COMPARE CUTS: {len(tgt_cuts)}, {len(src_cuts)}")
+                mismatch = []
                 # Assign the computed target features to the source
                 for src_cut, tgt_cut in zip(src_cuts, tgt_cuts):
+                    temp_src = src_cut.id
+                    temp_tgt = tgt_cut.id
+                    
+                    temp_src = temp_src.replace(get_speaker(temp_src), '')
+                    temp_tgt = temp_tgt.replace(get_speaker(temp_tgt), '')
+                    
+                    if temp_src != temp_tgt:
+                        mismatch.append(temp_src)
+                        # print(f"MISMATCH: src {temp_src}\n tgt {temp_tgt} ")
+                        continue
                     # source_audio_path = src_cut.recording.sources[0].source
                     # target_audio_path = get_target_audio_path(source_audio_path, src_speaker, tgt_speaker)
-                    src_cut.target_recording = tgt_cut
+                    else:
+                        src_cut.target_recording = tgt_cut
                     # src_cut.target_recording = {"target_recording": tgt_cut}
-
+                print(len(mismatch))    
+        print(f"Writing file cuts_{src_partition}.json")
         src_cuts.to_file(f"{args.output_dir}/cuts_{src_partition}.jsonl.gz")
     
 
@@ -302,7 +321,6 @@ def main():
                 cut_set = CutSet.from_manifests(
                     recordings=m["recordings"],
                 )
-
                 if "train" in partition:
                     if "control" in partition:
                         target_train_cuts[partition] = cut_set
