@@ -803,8 +803,7 @@ class VALLE(VALLF):
             x_prompts_codes = x_prompts_codes.type(torch.int64)
 
             assert prompts_len.min() == prompts_len.max()
-            assert self.prefix_mode == 4
-            
+            assert self.prefix_mode == 4           
 
         assert y.ndim == 3, y.shape
         assert y_lens.ndim == 1, y_lens.shape
@@ -816,15 +815,16 @@ class VALLE(VALLF):
         y_mask = make_pad_mask(y_lens).to(y.device)
         y_mask_int = y_mask.type(torch.int64)
         x_mask_int = x_mask.type(torch.int64)
-        
-        # compare type of x to y
 
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
         x_codes = x.type(torch.int64) * (1 - x_mask_int.unsqueeze(dim=-1))
-
+        
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
+        # Convert `y` to a tensor of zeros while retaining its shape
+        y = torch.zeros_like(y)
+        
         x, _ = self.pad_y_eos(
             x_codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
@@ -875,7 +875,7 @@ class VALLE(VALLF):
             new_attn_mask = torch.zeros_like(xy_attn_mask, dtype=x.dtype)
             new_attn_mask.masked_fill_(xy_attn_mask, float("-inf"))
             xy_attn_mask = new_attn_mask
-
+            # Try something with this not actually being the typical speaker tensor and some random vector content.??
             y_emb = self.ar_audio_embedding(y)
             y_emb = self.ar_audio_prenet(y_emb)
             y_pos = self.ar_audio_position(y_emb)
@@ -888,7 +888,7 @@ class VALLE(VALLF):
                 # is_causal=True,
             )
             logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
-            
+
             total_loss = F.cross_entropy(logits, targets, reduction=reduction)
             # Performs Multiclass accuracy
             metrics["ArTop10Accuracy"] = self.ar_accuracy_metric(
@@ -991,8 +991,9 @@ class VALLE(VALLF):
 
         prompts = audio_prompts
         prefix_len = audio_prompts.shape[1]
+        # Initialize y with just the first token (or BOS if needed)
+        y = torch.zeros((audio_prompts.shape[0], 1), device=audio_prompts.device, dtype=torch.long)
 
-        y = prompts[..., 0]
         print(f"Y shape before prepend: {y.shape}")
         print(f"Prompts: {prompts.shape}")
         if self.ar_audio_prepend_bos:
@@ -1006,8 +1007,7 @@ class VALLE(VALLF):
             y_emb = self.ar_audio_prenet(y_emb)
             y_pos = self.ar_audio_position(y_emb)
 
-            y_len = y.shape[1]
-           
+            y_len = y.shape[1]   
 
             y_attn_mask = torch.triu(
                 torch.ones(y_len, y_len, dtype=torch.bool), diagonal=1
@@ -1018,20 +1018,22 @@ class VALLE(VALLF):
                 mask=y_attn_mask,
             )
             logits = self.ar_predict_layer(xy_dec[:, -1])
-            print(f"logits size after AR decoder: {logits.size()}")
             samples = topk_sampling(
                 logits, top_k=top_k, top_p=1.0, temperature=temperature
-            )
-            print(f"Y shape after padding: {y.shape}")
-            print(f"AR samples size: {samples.shape} and samples: {samples}")
+            )           
+
             if (
                 torch.argmax(logits, dim=-1)[0] == NUM_AUDIO_TOKENS
                 or samples[0, 0] == NUM_AUDIO_TOKENS
-                or (y.shape[1] - prompts.shape[1]) > x_len * 16
+                or (y.shape[1] - prompts.shape[1]) > x_len * 1
             ):
                 break
 
             y = torch.cat([y, samples], dim=1)
+
+
+        print(f"Y shape after padding: {y.shape}")       
+        print(f"AR samples size: {samples.shape} and samples: {samples}")
 
         codes = [y[:, :]]
         print(f"AR CODES: {codes}")

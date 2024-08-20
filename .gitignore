@@ -19,9 +19,6 @@ egs/uaspeech/download/uaspeech_control_supervisions_all.jsonl.gz
 data/tokenized/unique_text_tokens.k2symbols
 egs/uaspeech/uaspeechForCluster.zip
 egs/libritts/unique_text_tokens.k2symbols
-egs/uaspeech/~/model.txt
-egs/uaspeech/~/tensorboard/events.out.tfevents.1707844131.polaris.91460.0
-egs/uaspeech/~/tensorboard/events.out.tfevents.1707844289.polaris.92201.0
 egs/uaspeech/uaspeechTrainStage1/*
 egs/uaspeech/uaspeechTrainStage2/*
 egs/uaspeech/tensorboard_stage1/*
@@ -29,6 +26,9 @@ egs/uaspeech/tensorboard_stage2/*
 egs/uaspeech/egs/uaspeech/model.txt
 egs/uaspeech/uaspeech/*
 egs/uaspeech/uaspeech_run2/*
+egs/uaspeech/uaspeech_run3/*
+egs/uaspeech/uaspeech_run4/*
+egs/uaspeech/uaspeech_run5/*
 egs/uaspeech/src_tgt_cuts.json
 egs/uaspeech/src_tgt_cuts.jsonl.gz
 egs/uaspeech/output.json
