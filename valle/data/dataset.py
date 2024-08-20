@@ -81,14 +81,8 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
         for transform in self.cut_transforms:
             cuts = transform(cuts)
 
-        # print(f"Processing cuts: {[cut.id for cut in cuts]}")
+        audio, audio_lens = None, None
 
-        if False:  # not used
-            audio, audio_lens = collate_audio(cuts)
-        else:  # for sharing tokenized features in different machines
-            audio, audio_lens = None, None
-
-        # audio, audio_lens = collate_audio(cuts)
         audio_features, audio_features_lens = self.feature_input_strategy(cuts)
 
         for transform in self.feature_transforms:
@@ -149,87 +143,6 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
             "target_audio_features": target_audio_features,
             "target_audio_features_lens": target_audio_features_lens,
         }
-
-
-class SpeechSynthesisDataset(torch.utils.data.Dataset):
-    """
-    The PyTorch Dataset for the speech synthesis(e.g. TTS) task.
-    Each item in this dataset is a dict of:
-
-    .. code-block::
-
-        {
-            'audio': (B x NumSamples) float tensor
-            'audio_lens': (B, ) int tensor
-            'text': str
-            'audio_features': (B x NumFrames x NumFeatures) float tensor
-            'audio_features_lens': (B, ) int tensor
-            'text_tokens': (B x NumTextTokens) long tensor
-            'text_tokens_lens': (B, ) int tensor
-        }
-    """
-
-    def __init__(
-        self,
-        text_token_collater: TextTokenCollater,
-        cut_transforms: List[Callable[[CutSet], CutSet]] = None,
-        feature_input_strategy: BatchIO = PrecomputedFeatures(),
-        feature_transforms: Union[Sequence[Callable], Callable] = None,
-    ) -> None:
-        super().__init__()
-
-        self.text_token_collater = text_token_collater
-        self.cut_transforms = ifnone(cut_transforms, [])
-        self.feature_input_strategy = feature_input_strategy
-
-        if feature_transforms is None:
-            feature_transforms = []
-        elif not isinstance(feature_transforms, Sequence):
-            feature_transforms = [feature_transforms]
-
-        assert all(
-            isinstance(transform, Callable) for transform in feature_transforms
-        ), "Feature transforms must be Callable"
-        self.feature_transforms = feature_transforms
-
-    def __getitem__(self, cuts: CutSet) -> Dict[str, torch.Tensor]:
-        validate_for_tts(cuts)
-
-        for transform in self.cut_transforms:
-            cuts = transform(cuts)
-
-        if False:  # not used
-            audio, audio_lens = collate_audio(cuts)
-        else:  # for sharing tokenized features in different machines
-            audio, audio_lens = None, None
-
-        audio_features, audio_features_lens = self.feature_input_strategy(cuts)
-
-        for transform in self.feature_transforms:
-            audio_features = transform(audio_features)
-
-        text_tokens, text_tokens_lens = self.text_token_collater(
-            [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
-        )
-        
-        return {
-            "utt_id": [cut.id for cut in cuts],
-            "text": [cut.supervisions[0].text for cut in cuts],
-            "audio": audio,
-            "audio_lens": audio_lens,
-            "audio_features": audio_features,
-            "audio_features_lens": audio_features_lens,
-            "text_tokens": text_tokens,
-            "text_tokens_lens": text_tokens_lens,
-        }
-
-
-def validate_for_tts(cuts: CutSet) -> None:
-    validate(cuts)
-    for cut in cuts:
-        assert (
-            len(cut.supervisions) == 1
-        ), "Only the Cuts with single supervision are supported."
 
 def validate_for_audio_to_audio(cuts: CutSet) -> None:
     validate(cuts)

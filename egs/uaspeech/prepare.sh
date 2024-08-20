@@ -95,12 +95,12 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
   mid_index_test=$((total_cuts_test / 2))
   echo ${total_cuts_test}
   echo ${mid_index_test}
-  # dev typical
+  # dev atypical
   lhotse subset --last ${mid_index_test}\
     ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
     ${audio_feats_dir}/cuts_atypical_speakers_dev.jsonl.gz
   
-  # test typical
+  # test atypical
   lhotse subset --first ${mid_index_test} \
     ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
     ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz
