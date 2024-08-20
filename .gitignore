@@ -12,18 +12,14 @@ egs/libritts/prompts/*.png
 valle/version.py
 infer/
 egs/uaspeech/uaspeechReport.log
-egs/uaspeech/download/uaspeech_cerebral_recordings_all.jsonl.gz
-egs/uaspeech/download/uaspeech_cerebral_supervisions_all.jsonl.gz
-egs/uaspeech/download/uaspeech_control_recordings_all.jsonl.gz
-egs/uaspeech/download/uaspeech_control_supervisions_all.jsonl.gz
+egs/uaspeech/download/*
 data/tokenized/unique_text_tokens.k2symbols
 egs/uaspeech/uaspeechForCluster.zip
-egs/libritts/unique_text_tokens.k2symbols
+egs/libritts/*
 egs/uaspeech/uaspeechTrainStage1/*
 egs/uaspeech/uaspeechTrainStage2/*
 egs/uaspeech/tensorboard_stage1/*
 egs/uaspeech/tensorboard_stage2/*
-egs/uaspeech/egs/uaspeech/model.txt
 egs/uaspeech/uaspeech/*
 egs/uaspeech/uaspeech_run2/*
 egs/uaspeech/uaspeech_run3/*
@@ -34,3 +30,4 @@ egs/uaspeech/src_tgt_cuts.jsonl.gz
 egs/uaspeech/output.json
 egs/uaspeech/h5reader.py
 egs/uaspeech/atypical_speakers_testH5.json
+egs/uaspeech/audioSamples/*
