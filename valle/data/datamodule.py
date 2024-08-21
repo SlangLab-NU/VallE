@@ -217,7 +217,7 @@ class TtsDataModule:
         group.add_argument(
             "--dataset",
             type=str,
-            default="libritts",
+            default="uaspeech",
             help="--input-strategy PromptedPrecomputedFeatures needs dataset name to prepare prompts.",
         )
 

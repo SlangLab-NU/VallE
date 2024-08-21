@@ -25,6 +25,7 @@ egs/uaspeech/uaspeech_run2/*
 egs/uaspeech/uaspeech_run3/*
 egs/uaspeech/uaspeech_run4/*
 egs/uaspeech/uaspeech_run5/*
+egs/uaspeech/uaspeech_run6/*
 egs/uaspeech/src_tgt_cuts.json
 egs/uaspeech/src_tgt_cuts.jsonl.gz
 egs/uaspeech/output.json
