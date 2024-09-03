@@ -818,12 +818,12 @@ class VALLE(VALLF):
 
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
         x_codes = x.type(torch.int64) * (1 - x_mask_int.unsqueeze(dim=-1))
-        
+
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
         # Convert `y` to a tensor of zeros while retaining its shape
-        y = torch.zeros_like(y)
+        # y = torch.zeros_like(y)
         
         x, _ = self.pad_y_eos(
             x_codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
@@ -861,6 +861,9 @@ class VALLE(VALLF):
                 (x_len, 0),
                 value=False,
             )
+            # ISSUE IS X AND Y ARE BEING FED INTO THE PREDICTIONS AND THEY SHOULDN'T
+            # PREDICTION SHOULD BE LEARNING BASED UPON THE LOSS CALCULATION THE LENGTH OF SEQUENCE Y.
+
             xy_attn_mask = torch.concat([x_attn_mask, y_attn_mask], dim=0)
 
             # merge key padding and attention masks
@@ -887,10 +890,27 @@ class VALLE(VALLF):
                 # src_key_padding_mask=xy_padding_mask,
                 # is_causal=True,
             )
-            logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
 
+            logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
+            # print out some softmax that is happening under the CE calculation to see if the output matches the y of xy_dec
+            # how to debug to see token mapping to y indices
+            softmax_output = F.softmax(logits, dim=1)
+
+            print(f"xy shape: {xy_dec.shape}")
+            print(f"XY_DEC: {xy_dec}")
+            
+            print(f"Softmax output: {softmax_output}")
+            # Use argmax to get the predicted indices
+            predicted_indices = torch.argmax(softmax_output, dim=1)
+
+            # Print the predicted indices to inspect
+            print(f"predicted shape: {predicted_indices.shape}")
+            print("Predicted indices:", predicted_indices)
+            print(f"Targets shape: {targets.shape}")
+            print(f"Targets: {targets}")
             total_loss = F.cross_entropy(logits, targets, reduction=reduction)
             # Performs Multiclass accuracy
+            # look at ignoring EOS in accuracy
             metrics["ArTop10Accuracy"] = self.ar_accuracy_metric(
                 logits.detach(), targets
             ).item() * y_lens.sum().type(torch.float32)
@@ -939,7 +959,21 @@ class VALLE(VALLF):
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
                 0, 2, 1
             )
+            print(f"Logits shape: {logits.shape}")
+            softmax_output = F.softmax(logits, dim=1)
 
+            # print(f"xy shape: {xy_dec.shape}")
+            # print(f"XY_DEC: {xy_dec}")
+            
+            # print(f"Softmax output: {softmax_output}")
+            # Use argmax to get the predicted indices
+            predicted_indices = torch.argmax(softmax_output, dim=1)
+
+            # Print the predicted indices to inspect
+            print(f"predicted shape: {predicted_indices.shape}")
+            print("Predicted indices:", predicted_indices)
+            print(f"Targets shape: {targets.shape}")
+            print(f"Targets: {targets}")
             # loss
             total_length = (y_lens).sum().type(torch.float32)
             total_loss += (
@@ -997,6 +1031,7 @@ class VALLE(VALLF):
         print(f"Y shape before prepend: {y.shape}")
         print(f"Prompts: {prompts.shape}")
         if self.ar_audio_prepend_bos:
+            print("prepend bos occured")
             y = F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
         
         x_len = prompts.shape[1]
@@ -1012,7 +1047,9 @@ class VALLE(VALLF):
             y_attn_mask = torch.triu(
                 torch.ones(y_len, y_len, dtype=torch.bool), diagonal=1
             ).to(y.device)
-        
+
+            # xy_pos = torch.cat([prompts, y_pos])
+
             xy_dec, _ = self.ar_decoder(
                 (y_pos, None),
                 mask=y_attn_mask,
@@ -1021,18 +1058,21 @@ class VALLE(VALLF):
             samples = topk_sampling(
                 logits, top_k=top_k, top_p=1.0, temperature=temperature
             )           
-
+            print(f"Y size: {y.shape}")
             if (
                 torch.argmax(logits, dim=-1)[0] == NUM_AUDIO_TOKENS
-                or samples[0, 0] == NUM_AUDIO_TOKENS
-                or (y.shape[1] - prompts.shape[1]) > x_len * 1
+                or samples[0, 0] == NUM_AUDIO_TOKENS       
             ):
+                print("REACHED EOS")
                 break
-
+            elif ((y.shape[1] - prompts.shape[1]) > x_len * 1):
+                print("REACHED LENGTH LIMIT")
+                break
             y = torch.cat([y, samples], dim=1)
 
 
-        print(f"Y shape after padding: {y.shape}")       
+        print(f"Y shape after padding: {y.shape}")
+        print(f"Y: {y}")       
         print(f"AR samples size: {samples.shape} and samples: {samples}")
 
         codes = [y[:, :]]
@@ -1074,7 +1114,8 @@ class VALLE(VALLF):
             # print(f"CODES: {codes}")
             if i < self.num_quantizers - 2:
                 y_emb += embedding_layer(samples)
-
+        print(f"NAR codes: {codes}")
+        print(f"Final output: {torch.stack(codes, dim=-1)}")
         assert len(codes) == self.num_quantizers
         print(f"Final output size: {torch.stack(codes, dim=-1).shape}")
         return torch.stack(codes, dim=-1)

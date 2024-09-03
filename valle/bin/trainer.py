@@ -995,7 +995,7 @@ def run(rank, world_size, args):
             model_parameters,
             lr=params.base_lr,
             betas=(0.9, 0.95),
-            weight_decay=1e-2,
+            weight_decay=1e-3,
             eps=1e-8,
         )
     elif params.optimizer_name == "Adam":

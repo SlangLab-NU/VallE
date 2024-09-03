@@ -222,13 +222,6 @@ class TtsDataModule:
         )
 
         parser.add_argument(
-            "--text-tokens",
-            type=str,
-            default="data/tokenized/unique_text_tokens.k2symbols",
-            help="Path to the unique text tokens file",
-        )
-
-        parser.add_argument(
             "--sampling-rate",
             type=int,
             default=24000,
