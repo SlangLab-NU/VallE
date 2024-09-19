@@ -140,15 +140,17 @@ class VALLF(nn.Module):
             scale=False,
             alpha=True,
         )
-
+        # decoder_layer_cls() creates individual layers of the decoder. Each decoder layer is responsible 
+        # for one step of the sequence processing. It typically includes self-attention, encoder-decoder 
+        # attention (if applicable), and feedforward layers.
         self.ar_decoder = decoder_cls(
             decoder_layer_cls(
-                d_model,
-                nhead,
-                dim_feedforward=d_model * 4,
+                d_model, # dimensionality of input and output at each layer of decoder
+                nhead,   # number of attention heads
+                dim_feedforward=d_model * 4, # size of hidden layer in feedforward network
                 dropout=0.1,
-                batch_first=True,
-                norm_first=norm_first,
+                batch_first=True, # input tensors are expected to have same batch size as first dim
+                norm_first=norm_first, # layer normalization
             ),
             num_layers=num_layers,
             norm=LayerNorm(d_model) if norm_first else None,
@@ -323,16 +325,28 @@ class VALLF(nn.Module):
                     yield pair
 
     def pad_y_eos(self, y, y_mask_int, eos_id):
+        """
+        This function is used to pad the target sequence (y) and add an End-of-Sequence (EOS) token. 
+        It also handles the addition of a Beginning-of-Sequence (BOS) token if required.
+        @param y: The target sequence typically of shape [batch_size, sequence_length]
+        @param y_mask_int: A mask indicating which positions in y are valid (non-padded).
+                           It's an integer mask of shape [batch_size, sequence_length] where 1
+                           indicates valid tokens and 0 indicates padding
+        @param eos_id: The integer ID representing the EOS token
+        @return: [input_sequence (optionally padded with BOS), target_sequence (padded with EOS)]
+        """
+        # Top line pads the sequence y on the right by one position (adding a single column) with the value 0. 
+        # This prepares the sequence to later insert the EOS token at the end.
         targets = F.pad(y, (0, 1), value=0) + eos_id * F.pad(
-            y_mask_int, (0, 1), value=1
+            y_mask_int, (0, 1), value=1 # This pads the mask y_mask_int on the right by one position with the value 1 ensuring the EOS token is added to the end of the sequence.
         )
-        # inputs, targets
+        
         if self.ar_audio_prepend_bos:
             return (
                 F.pad(targets[:, :-1], (1, 0), value=NUM_AUDIO_TOKENS + 1),
                 targets,
             )
-
+        # inputs, targets
         return targets[:, :-1], targets[:, 1:]
 
     def _prepare_prompts(self, y, y_lens, codes, nar_stage, y_prompts_codes):
@@ -775,14 +789,14 @@ class VALLE(VALLF):
         """
         Args:
           x:
-            A 3-D tensor of a typical speaker utterance of shape (N, T, 8).
+            A 3-D tensor of a atypical speaker utterance of shape (N, T, 8).
           x_lens:
-            A 1-D tensor of a typical speaker utterance of shape (N,). It contains the number of tokens in `x`
+            A 1-D tensor of a atypical speaker utterance of shape (N,). It contains the number of tokens in `x`
             before padding.
           y:
-            A 3-D tensor of a atypical speaker utterance of shape (N, T, 8).
+            A 3-D tensor of a typical speaker utterance of shape (N, T, 8).
           y_lens:
-            A 1-D tensor of a atypical speaker utterance of shape (N,). It contains the number of tokens in `x`
+            A 1-D tensor of a typical speaker utterance of shape (N,). It contains the number of tokens in `x`
             before padding.
           train_stage:
             0: AR & NAR modules, 1: AR modules, 2: NAR modules
@@ -822,8 +836,6 @@ class VALLE(VALLF):
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
-        # Convert `y` to a tensor of zeros while retaining its shape
-        # y = torch.zeros_like(y)
         
         x, _ = self.pad_y_eos(
             x_codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
@@ -861,11 +873,8 @@ class VALLE(VALLF):
                 (x_len, 0),
                 value=False,
             )
-            # ISSUE IS X AND Y ARE BEING FED INTO THE PREDICTIONS AND THEY SHOULDN'T
-            # PREDICTION SHOULD BE LEARNING BASED UPON THE LOSS CALCULATION THE LENGTH OF SEQUENCE Y.
 
             xy_attn_mask = torch.concat([x_attn_mask, y_attn_mask], dim=0)
-
             # merge key padding and attention masks
             bsz, src_len = x.shape[0], x_len + y_len
             _xy_padding_mask = (
@@ -897,9 +906,6 @@ class VALLE(VALLF):
             softmax_output = F.softmax(logits, dim=1)
 
             print(f"xy shape: {xy_dec.shape}")
-            print(f"XY_DEC: {xy_dec}")
-            
-            print(f"Softmax output: {softmax_output}")
             # Use argmax to get the predicted indices
             predicted_indices = torch.argmax(softmax_output, dim=1)
 
@@ -1022,39 +1028,63 @@ class VALLE(VALLF):
 
         
         assert audio_prompts.ndim == 3, audio_prompts.shape
+        
+        # prefix_len = audio_prompts.shape[1]
 
-        prompts = audio_prompts
-        prefix_len = audio_prompts.shape[1]
+
+        x = audio_prompts[..., 0]
+        print(f"X shape: {x.shape}")
+        # Pass x through the decoder
+        x = self.ar_audio_embedding(x)
+        x = self.ar_audio_prenet(x)
+        x = self.ar_audio_position(x)
+        print(f"X shape: {x.shape}")
+
+        
         # Initialize y with just the first token (or BOS if needed)
         y = torch.zeros((audio_prompts.shape[0], 1), device=audio_prompts.device, dtype=torch.long)
 
         print(f"Y shape before prepend: {y.shape}")
-        print(f"Prompts: {prompts.shape}")
         if self.ar_audio_prepend_bos:
             print("prepend bos occured")
             y = F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
         
-        x_len = prompts.shape[1]
+        x_len = audio_prompts.shape[1]
         x_attn_mask = torch.zeros((x_len, x_len), dtype=torch.bool)
+       
+        while True:          
 
-        while True:
+            # Pass y through the decoder after concatenating with x
             y_emb = self.ar_audio_embedding(y)
             y_emb = self.ar_audio_prenet(y_emb)
             y_pos = self.ar_audio_position(y_emb)
-
-            y_len = y.shape[1]   
-
-            y_attn_mask = torch.triu(
-                torch.ones(y_len, y_len, dtype=torch.bool), diagonal=1
-            ).to(y.device)
-
-            # xy_pos = torch.cat([prompts, y_pos])
-
-            xy_dec, _ = self.ar_decoder(
-                (y_pos, None),
-                mask=y_attn_mask,
+            
+            # Concatenate x and y embeddings
+            xy_pos = torch.cat([x, y_pos], dim=1)
+            
+            # Update the attention mask to allow y to attend to x and previous y tokens
+            y_len = y.shape[1]
+            x_attn_mask_pad = F.pad(
+                x_attn_mask, (0, y_len), value=True
             )
+            y_attn_mask = F.pad(
+                torch.triu(torch.ones(y_len, y_len, dtype=torch.bool), diagonal=1), (x_len, 0), value=False
+            )
+            xy_attn_mask = torch.cat([x_attn_mask_pad, y_attn_mask], dim=0).to(y.device)
+            
+            # Pass atypical speech (x) and predicted tokens (y) through the decoder
+            # Overall flow:
+            # The input to the decoder, is a tensor of shape [batch_size, seq_len, d_model].
+            # The decoder processes x through each of the num_layers decoder layers, applying attention, feedforward networks, and normalization at each step.
+            # The final output of the decoder is passed to the next component (e.g., a prediction layer for autoregressive tasks or another module for further processing).
+            xy_dec, _ = self.ar_decoder(
+                (xy_pos, None),
+                mask=xy_attn_mask,
+            )
+
+            # Generate logits from the decoder output
             logits = self.ar_predict_layer(xy_dec[:, -1])
+
             samples = topk_sampling(
                 logits, top_k=top_k, top_p=1.0, temperature=temperature
             )           
@@ -1065,7 +1095,7 @@ class VALLE(VALLF):
             ):
                 print("REACHED EOS")
                 break
-            elif ((y.shape[1] - prompts.shape[1]) > x_len * 1):
+            elif ((y.shape[1] - audio_prompts.shape[1]) > x_len * 1):
                 print("REACHED LENGTH LIMIT")
                 break
             y = torch.cat([y, samples], dim=1)
