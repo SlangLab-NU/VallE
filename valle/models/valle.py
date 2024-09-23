@@ -775,7 +775,7 @@ class VALLE(VALLF):
             nar_scale_factor=nar_scale_factor,
             **kwargs,
         )
-
+    # TODO Test two parallel typical speakers
     def forward(
         self,
         x: Union[torch.Tensor, PromptedFeatures],
