@@ -22,6 +22,7 @@ egs/uaspeech/tensorboard_stage1/*
 egs/uaspeech/tensorboard_stage2/*
 egs/uaspeech/uaspeech/*
 egs/uaspeech/uaspeech_run*
+egs/uaspeech/typical_test*
 egs/uaspeech/src_tgt_cuts.json
 egs/uaspeech/src_tgt_cuts.jsonl.gz
 egs/uaspeech/output.json

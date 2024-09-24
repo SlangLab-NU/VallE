@@ -115,7 +115,7 @@ def standardize_key(key):
     intersection between typical and atypical speaker utterances. Typical speakers will start
     with a 'C'
     """
-    return key[1:]
+    return key[5:]
 
 
 def create_speaker_speaker_pair(
@@ -172,26 +172,31 @@ def create_speaker_speaker_pair(
                     atypical_utterances = extract_mlf_information({}, atypical_speaker_path)
 
                     standardize_typical_keys = {standardize_key(key): key for key in typical_utterances}
-                    intersection_utterances = set(standardize_typical_keys.keys()).intersection(set(atypical_utterances.keys()))
+                    standardize_atypical_keys = {standardize_key(key): key for key in atypical_utterances}
+                    intersection_utterances = set(standardize_typical_keys.keys()).intersection(set(standardize_atypical_keys.keys()))
 
                     typical_utterances = {standardize_typical_keys[key]: typical_utterances[standardize_typical_keys[key]] for key in intersection_utterances}
-                    atypical_utterances = {key: atypical_utterances[key] for key in intersection_utterances}
-
+                    atypical_utterances = {standardize_atypical_keys[key]: atypical_utterances[standardize_atypical_keys[key]] for key in intersection_utterances}
+                    
                     assert len(typical_utterances) == len(atypical_utterances), f"Length Mismatch... Typical: {len(typical_utterances)} and Atypical: {len(atypical_utterances)}"
                     logger.info(f"Length of typical: {len(typical_utterances)}, Length of atypical: {len(atypical_utterances)}")
 
                     for key, value in tqdm(atypical_utterances.items(), desc="Preparing parallel speakers"):
                         try:
-                            atypical_recording_id = value + "_" + key
-                            atypical_audio_path = corpus_audio_dir / part / atypical_speaker / f"{key}.wav"
+                            atypical_recording_id = value + "_C" + key                       
+                            atypical_audio_path = corpus_audio_dir / part / atypical_speaker / f"{key}.wav"                            
                             atypical_recording = Recording.from_file(atypical_audio_path, atypical_recording_id)
                             if "_B2_" in atypical_recording_id:
                                 atypical_recording_test_set.append(atypical_recording)
                             else:
                                 atypical_recording_train_set.append(atypical_recording)
 
+                        except Exception as err:
+                            logger.error(err)
+                    for key, value in tqdm(typical_utterances.items(), desc="Preparing parallel speakers"):
+                        try:
                             typical_recording_id = value + "_C" + key
-                            typical_audio_path = corpus_audio_dir / part / typical_speaker / f"C{key}.wav"
+                            typical_audio_path = corpus_audio_dir / part / typical_speaker / f"{key}.wav"
                             typical_recording = Recording.from_file(typical_audio_path, typical_recording_id)
                             if "_B2_" in typical_recording_id:
                                 typical_recording_test_set.append(typical_recording)
@@ -238,8 +243,11 @@ def create_speaker_speaker_pair(
 # extract_mlf_information(typical, PATH)
 
 # Issues with CMO9 and feature extraction
-control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
-atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
+# control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
+# atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
+
+control_speakers = ["CF02", "CM04", "CM06", "CM10"]
+atypical_speakers = ["CF03", "CM05", "CM08", "CM12"]
 
 create_speaker_speaker_pair(UASPEECH_PATH, control_speakers, atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
 
