@@ -183,7 +183,7 @@ def create_speaker_speaker_pair(
 
                     for key, value in tqdm(atypical_utterances.items(), desc="Preparing parallel speakers"):
                         try:
-                            atypical_recording_id = value + "_C" + key                       
+                            atypical_recording_id = value + "_" + key                       
                             atypical_audio_path = corpus_audio_dir / part / atypical_speaker / f"{key}.wav"                            
                             atypical_recording = Recording.from_file(atypical_audio_path, atypical_recording_id)
                             if "_B2_" in atypical_recording_id:
@@ -195,7 +195,7 @@ def create_speaker_speaker_pair(
                             logger.error(err)
                     for key, value in tqdm(typical_utterances.items(), desc="Preparing parallel speakers"):
                         try:
-                            typical_recording_id = value + "_C" + key
+                            typical_recording_id = value + "_" + key
                             typical_audio_path = corpus_audio_dir / part / typical_speaker / f"{key}.wav"
                             typical_recording = Recording.from_file(typical_audio_path, typical_recording_id)
                             if "_B2_" in typical_recording_id:
@@ -246,8 +246,8 @@ def create_speaker_speaker_pair(
 # control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
 # atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
 
-control_speakers = ["CF02", "CM04", "CM06", "CM10"]
-atypical_speakers = ["CF03", "CM05", "CM08", "CM12"]
+control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
+atypical_speakers = ["CF03", "CF02", "CM05", "CM08", "CM13"]
 
 create_speaker_speaker_pair(UASPEECH_PATH, control_speakers, atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
 

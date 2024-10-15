@@ -806,7 +806,8 @@ class VALLE(VALLF):
         
         y_prompts_codes = None
         x_prompts_codes = None
-
+        
+        # Input checks
         if isinstance(y, PromptedFeatures) and isinstance(x, PromptedFeatures):         
             y_prompts_codes, y = y.data
             prompts_len, y_lens = y_lens.data   
@@ -818,21 +819,25 @@ class VALLE(VALLF):
 
             assert prompts_len.min() == prompts_len.max()
             assert self.prefix_mode == 4           
-
+        
+        # Input checks: Ensure `y` and `x` have the correct dimensions and shapes
         assert y.ndim == 3, y.shape
         assert y_lens.ndim == 1, y_lens.shape
 
         assert x.ndim == 3, x.shape
         assert x_lens.ndim == 1, x_lens.shape
 
+        # Generate padding masks for `x` (atypical) and `y` (typical) sequences
         x_mask = make_pad_mask(x_lens).to(x.device)
         y_mask = make_pad_mask(y_lens).to(y.device)
         y_mask_int = y_mask.type(torch.int64)
         x_mask_int = x_mask.type(torch.int64)
 
+        # Extract actual codes from `y` and `x` by applying masks to remove padding
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
         x_codes = x.type(torch.int64) * (1 - x_mask_int.unsqueeze(dim=-1))
 
+        # Pads batches so that each utterance is the same length
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
@@ -841,14 +846,16 @@ class VALLE(VALLF):
             x_codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
 
+        # Embed `x` (atypical speech) using the audio embedding layers
         x = self.ar_audio_embedding(x)  # Using the same audio embedding layer
         x = self.ar_audio_prenet(x)
         x = self.ar_audio_position(x)
-        x_len = x_lens.max()
+        x_len = x_lens.max() # Get max sequence length for padding
 
         metrics = {}
         total_loss = 0.0
 
+        # Create a padding mask for both `x` and `y` sequences (concatenated)
         xy_padding_mask = torch.concat([x_mask, y_mask], dim=1)
         if self.ar_audio_prepend_bos:
             ar_xy_padding_mask = torch.concat(
@@ -860,11 +867,18 @@ class VALLE(VALLF):
         if train_stage in [0, 1]:
             y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
 
+            # Attention mask for `x` - unmasked (i.e. model sees whole input)
             x_attn_mask = F.pad(
                 torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device),
                 (0, y_lens.max() + int(self.ar_audio_prepend_bos)),
                 value=True,
             )
+            x2_attn_mask = F.pad(
+                torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device),
+                (0, y_lens.max() + int(self.ar_audio_prepend_bos)),
+                value=True,
+            )
+            # Causal attention mask for `y` (typical speech) - upper triangular
             y_attn_mask = F.pad(
                 torch.triu(
                     torch.ones(y_lens.max() + int(self.ar_audio_prepend_bos), y_lens.max() + int(self.ar_audio_prepend_bos), dtype=torch.bool, device=x.device),
@@ -884,39 +898,38 @@ class VALLE(VALLF):
             )
             xy_attn_mask = xy_attn_mask.logical_or(_xy_padding_mask)
 
+            # Create a final attention mask with -inf for masked positions
             new_attn_mask = torch.zeros_like(xy_attn_mask, dtype=x.dtype)
             new_attn_mask.masked_fill_(xy_attn_mask, float("-inf"))
             xy_attn_mask = new_attn_mask
-            # Try something with this not actually being the typical speaker tensor and some random vector content.??
+            
+            # Prepare `y` (typical speech) embeddings
             y_emb = self.ar_audio_embedding(y)
             y_emb = self.ar_audio_prenet(y_emb)
             y_pos = self.ar_audio_position(y_emb)
             xy_pos = torch.concat([x, y_pos], dim=1)
 
+            # Pass concatenated `x` and `y` through the decoder with the attention mask
+            # Because of concatenation, decoder attends to all x to predict next y token
             xy_dec, _ = self.ar_decoder(
                 (xy_pos, None),
                 mask=xy_attn_mask,
-                # src_key_padding_mask=xy_padding_mask,
-                # is_causal=True,
             )
-
+            # Predict the logits for the typical speech sequence
             logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
-            # print out some softmax that is happening under the CE calculation to see if the output matches the y of xy_dec
-            # how to debug to see token mapping to y indices
-            softmax_output = F.softmax(logits, dim=1)
-
-            print(f"xy shape: {xy_dec.shape}")
-            # Use argmax to get the predicted indices
-            predicted_indices = torch.argmax(softmax_output, dim=1)
+            
+            # Next two lines are for debugging
+            softmax_output = F.softmax(logits, dim=1)  
+            predicted_indices = torch.argmax(softmax_output, dim=1) # Use argmax to get the predicted indices
 
             # Print the predicted indices to inspect
-            print(f"predicted shape: {predicted_indices.shape}")
-            print("Predicted indices:", predicted_indices)
-            print(f"Targets shape: {targets.shape}")
-            print(f"Targets: {targets}")
+            # print(f"predicted shape: {predicted_indices.shape}")
+            # print("Predicted indices:", predicted_indices)
+            # print(f"Targets shape: {targets.shape}")
+            # print(f"Targets: {targets}")
             total_loss = F.cross_entropy(logits, targets, reduction=reduction)
             # Performs Multiclass accuracy
-            # look at ignoring EOS in accuracy
+            # EOS is ignored because it is padded with True token
             metrics["ArTop10Accuracy"] = self.ar_accuracy_metric(
                 logits.detach(), targets
             ).item() * y_lens.sum().type(torch.float32)
@@ -953,7 +966,7 @@ class VALLE(VALLF):
 
             y_pos = self.nar_audio_prenet(y_emb)
             y_pos = self.nar_audio_position(y_pos)
-            xy_pos = torch.concat([x, y_pos], dim=1)
+            xy_pos = torch.concat([x, y_pos], dim=1) # <- ATYPICAL SPEECH IS X
             xy_dec, _ = self.nar_decoder(
                 (xy_pos, self.nar_stage_embeddings[nar_stage - 1].weight),
                 src_key_padding_mask=xy_padding_mask,
@@ -1009,7 +1022,7 @@ class VALLE(VALLF):
         return ((x, codes), total_loss, metrics)
 
     def inference(
-    self,
+    self, # try inputting audio twice for both x and y
     audio_prompts: torch.Tensor,
     top_k: int = -100,
     temperature: float = 1.0,
