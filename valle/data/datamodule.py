@@ -297,12 +297,14 @@ class TtsDataModule:
             # transforms = [PerturbSpeed(factors=[0.9, 1.1], p=2/3)] + transforms   # noqa
             # Drop feats to be on the safe side.
             train = AudioToAudioDataset(
+                get_text_token_collater(self.args.text_tokens),
                 cut_transforms=transforms,
                 feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor()),
                 feature_transforms=input_transforms,
             )
         else:
             train = AudioToAudioDataset(
+                get_text_token_collater(self.args.text_tokens),
                 feature_input_strategy=_get_input_strategy(
                     self.args.input_strategy, self.args.dataset, cuts_train
                 ),
@@ -363,11 +365,13 @@ class TtsDataModule:
         logging.info("About to create dev dataset")
         if self.args.on_the_fly_feats:
             validate = AudioToAudioDataset(
+                get_text_token_collater(self.args.text_tokens),
                 feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor()),
                 cut_transforms=[],
             )
         else:
             validate = AudioToAudioDataset(
+                get_text_token_collater(self.args.text_tokens),
                 feature_input_strategy=_get_input_strategy(
                     self.args.input_strategy, self.args.dataset, cuts_valid
                 ),
@@ -394,6 +398,7 @@ class TtsDataModule:
     def test_dataloaders(self, cuts: CutSet) -> DataLoader:
         logging.debug("About to create test dataset")
         test = AudioToAudioDataset(
+            get_text_token_collater(self.args.text_tokens),
             feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor())
             if self.args.on_the_fly_feats
             else _get_input_strategy(

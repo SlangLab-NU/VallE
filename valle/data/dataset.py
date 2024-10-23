@@ -51,12 +51,14 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
     # Removed text collator.
     def __init__(
         self,
+        text_token_collater: TextTokenCollater,
         cut_transforms: List[Callable[[CutSet], CutSet]] = None,
         feature_input_strategy: BatchIO = PrecomputedFeatures(),
         feature_transforms: Union[Sequence[Callable], Callable] = None,
     ) -> None:
         super().__init__()
 
+        self.text_token_collater = text_token_collater
         self.cut_transforms = ifnone(cut_transforms, [])
         self.feature_input_strategy = feature_input_strategy
 
@@ -119,21 +121,29 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
         for transform in self.feature_transforms:
             target_audio_features = transform(target_audio_features)
 
-        # print(f"Processed batch for cuts: {[cut.id for cut in cuts]}")
+        print(f"Processed batch for cuts: {[cut.id for cut in cuts]}")
 
-        # print("GET ITEM WAS CALLED")
-        # print(f"utt_id: {[cut.id for cut in cuts]}")
-        # print(f"audio: {audio}")
-        # print(f"audio_lens: {audio_lens}")
-        # print(f"audio_features: {audio_features}")
-        # print(f"audio_features_lens: {audio_features_lens}")
-        # print(f"target_audio: {target_audio}")
-        # print(f"target_audio_lens: {target_audio_lens}")
-        # print(f"target_audio_features: {target_audio_features}")
-        # print(f"target_audio_features_lens: {target_audio_features_lens}")
+        print("GET ITEM WAS CALLED")
+        print(f"utt_id: {[cut.id for cut in cuts]}")
+        print(f"text: {[cut.supervisions[0].text for cut in cuts]}")
+        print(f"audio: {audio}")
+        print(f"audio_lens: {audio_lens}")
+        print(f"audio_features: {audio_features}")
+        print(f"audio_features_lens: {audio_features_lens}")
+        print(f"target_audio: {target_audio}")
+        print(f"target_audio_lens: {target_audio_lens}")
+        print(f"target_audio_features: {target_audio_features}")
+        print(f"target_audio_features_lens: {target_audio_features_lens}")
+        print(f"text_tokens: {text_tokens}")
+        print(f"text_tokens_lens: {text_tokens_lens}")
+
+        text_tokens, text_tokens_lens = self.text_token_collater(
+            [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
+        )
 
         return {
             "utt_id": [cut.id for cut in cuts],
+            "text": [cut.supervisions[0].text for cut in cuts],
             "audio": audio,
             "audio_lens": audio_lens,
             "audio_features": audio_features,
@@ -142,6 +152,8 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
             "target_audio_lens": target_audio_lens,
             "target_audio_features": target_audio_features,
             "target_audio_features_lens": target_audio_features_lens,
+            "text_tokens": text_tokens,
+            "text_tokens_lens": text_tokens_lens,
         }
 
 def validate_for_audio_to_audio(cuts: CutSet) -> None:

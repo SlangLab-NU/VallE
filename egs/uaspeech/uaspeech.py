@@ -111,11 +111,13 @@ def extract_mlf_information(speaker_dict: dict, speaker_path: str):
 
 def standardize_key(key):
     """
-    Function to standardize the keys by removing the first character. Need this for finding
+    Function to standardize the keys by removing the speaker code. Need this for finding
     intersection between typical and atypical speaker utterances. Typical speakers will start
     with a 'C'
     """
-    return key[5:]
+    if key[:1] =="C":
+        return key[5:]
+    return key[4:]
 
 
 def create_speaker_speaker_pair(
@@ -153,6 +155,11 @@ def create_speaker_speaker_pair(
     typical_recording_test_set = []
     atypical_recording_test_set = []
 
+    typical_supervision_train_set = []
+    atypical_supervision_train_set = []
+    typical_supervision_test_set = []
+    atypical_supervision_test_set = []
+
     with ThreadPoolExecutor(num_jobs) as ex:
         for part in tqdm(dataset_parts, desc="Dataset parts"):
             if not part.startswith("."):  # Avoid hidden files
@@ -162,67 +169,111 @@ def create_speaker_speaker_pair(
                     continue
 
                 for typical_speaker, atypical_speaker in tqdm(zip(control_speakers, atypical_speakers), desc="Preparing Speaker Pair"):
+                    # First retrieve path to individual speaker information for typical and atypical speakers
                     typical_speaker_path = os.path.join(metadata_mlf_path, typical_speaker, typical_speaker + METADATA_FILE)
                     atypical_speaker_path = os.path.join(metadata_mlf_path, atypical_speaker, atypical_speaker + METADATA_FILE)
 
                     assert os.path.isfile(typical_speaker_path), f"No such file: {typical_speaker_path}"
                     assert os.path.isfile(atypical_speaker_path), f"No such file: {atypical_speaker_path}"
-
+                    # retrieves utterance code and word uttered. Inserts into a dictionary
                     typical_utterances = extract_mlf_information({}, typical_speaker_path)
                     atypical_utterances = extract_mlf_information({}, atypical_speaker_path)
 
+                    # Removes speaker from key (i.e. CF02 and F02) to match utterance codes between atypical and typical speakers
                     standardize_typical_keys = {standardize_key(key): key for key in typical_utterances}
                     standardize_atypical_keys = {standardize_key(key): key for key in atypical_utterances}
+                    # find intersection between dictionary items (ensures we have the same words uttered between speakers)
                     intersection_utterances = set(standardize_typical_keys.keys()).intersection(set(standardize_atypical_keys.keys()))
 
                     typical_utterances = {standardize_typical_keys[key]: typical_utterances[standardize_typical_keys[key]] for key in intersection_utterances}
                     atypical_utterances = {standardize_atypical_keys[key]: atypical_utterances[standardize_atypical_keys[key]] for key in intersection_utterances}
                     
+                    # Check typical and atypical are the same length
                     assert len(typical_utterances) == len(atypical_utterances), f"Length Mismatch... Typical: {len(typical_utterances)} and Atypical: {len(atypical_utterances)}"
                     logger.info(f"Length of typical: {len(typical_utterances)}, Length of atypical: {len(atypical_utterances)}")
 
-                    for key, value in tqdm(atypical_utterances.items(), desc="Preparing parallel speakers"):
+                    # Key: speaker code
+                    # value: Utterance (Word)
+                    for (atypical_key, atypical_value), (typical_key, typical_value) in tqdm(zip(atypical_utterances.items(), typical_utterances.items()), desc="Preparing parallel speakers"):
                         try:
-                            atypical_recording_id = value + "_" + key                       
-                            atypical_audio_path = corpus_audio_dir / part / atypical_speaker / f"{key}.wav"                            
+                            atypical_recording_id = atypical_value + "_" + atypical_key                       
+                            atypical_audio_path = corpus_audio_dir / part / atypical_speaker / f"{atypical_key}.wav"                            
                             atypical_recording = Recording.from_file(atypical_audio_path, atypical_recording_id)
-                            if "_B2_" in atypical_recording_id:
+
+                            typical_recording_id = typical_value + "_" + typical_key
+                            typical_audio_path = corpus_audio_dir / part / typical_speaker / f"{typical_key}.wav"
+                            typical_recording = Recording.from_file(typical_audio_path, typical_recording_id)
+                            # Add supervision segment so vall-e can process text inputs
+                            atypical_segment = SupervisionSegment(
+                                id=atypical_recording_id,
+                                recording_id=atypical_recording_id,
+                                start=0.0,
+                                duration=atypical_recording.duration,
+                                language="English",
+                                speaker=atypical_key,
+                                text=atypical_value
+                            )
+
+                            typical_segment = SupervisionSegment(
+                                id=typical_recording_id,
+                                recording_id=typical_recording_id,
+                                start=0.0,
+                                duration=typical_recording.duration,
+                                language="English",
+                                speaker=typical_key,
+                                text=typical_value
+                            )
+                            # test set is comprised of utterances in batch 2 else it's train set
+                            if "_B2_" in atypical_recording_id and "_B2_" in typical_recording_id:
                                 atypical_recording_test_set.append(atypical_recording)
+                                atypical_supervision_test_set.append(atypical_segment)
+                                
+                                typical_recording_test_set.append(typical_recording)
+                                typical_supervision_test_set.append(typical_segment)
                             else:
                                 atypical_recording_train_set.append(atypical_recording)
+                                atypical_supervision_train_set.append(atypical_segment)
 
-                        except Exception as err:
-                            logger.error(err)
-                    for key, value in tqdm(typical_utterances.items(), desc="Preparing parallel speakers"):
-                        try:
-                            typical_recording_id = value + "_" + key
-                            typical_audio_path = corpus_audio_dir / part / typical_speaker / f"{key}.wav"
-                            typical_recording = Recording.from_file(typical_audio_path, typical_recording_id)
-                            if "_B2_" in typical_recording_id:
-                                typical_recording_test_set.append(typical_recording)
-                            else:
                                 typical_recording_train_set.append(typical_recording)
+                                typical_supervision_train_set.append(typical_segment)
 
                         except Exception as err:
                             logger.error(err)
 
-    typical_recording_train_set = RecordingSet.from_recordings(typical_recording_train_set)
     atypical_recording_train_set = RecordingSet.from_recordings(atypical_recording_train_set)
+    atypical_supervision_train_set = SupervisionSet.from_segments(atypical_supervision_train_set)
+    
+    typical_recording_train_set = RecordingSet.from_recordings(typical_recording_train_set)
+    typical_supervision_train_set = SupervisionSet.from_segments(typical_supervision_train_set)
 
-    typical_recording_test_set = RecordingSet.from_recordings(typical_recording_test_set)
     atypical_recording_test_set = RecordingSet.from_recordings(atypical_recording_test_set)
+    atypical_supervision_test_set = SupervisionSet.from_segments(atypical_supervision_test_set)
+    
+    typical_recording_test_set = RecordingSet.from_recordings(typical_recording_test_set)
+    typical_supervision_test_set = SupervisionSet.from_segments(typical_supervision_test_set)
 
     if output_dir is not None:
-        typical_recording_train_set.to_file(output_dir / f"uaspeech_recordings_control_speakers_train.jsonl.gz")
         atypical_recording_train_set.to_file(output_dir / f"uaspeech_recordings_atypical_speakers_train.jsonl.gz")
-        typical_recording_test_set.to_file(output_dir / f"uaspeech_recordings_control_speakers_test.jsonl.gz")
+        atypical_supervision_train_set.to_file(output_dir / f"uaspeech_supervisions_atypical_speakers_train.jsonl.gz")
+
+        typical_recording_train_set.to_file(output_dir / f"uaspeech_recordings_typical_speakers_train.jsonl.gz")
+        typical_supervision_train_set.to_file(output_dir / f"uaspeech_supervisions_typical_speakers_train.jsonl.gz")
+
         atypical_recording_test_set.to_file(output_dir / f"uaspeech_recordings_atypical_speakers_test.jsonl.gz")
+        atypical_supervision_test_set.to_file(output_dir / f"uaspeech_supervisions_atypical_speakers_test.jsonl.gz")
+
+        typical_recording_test_set.to_file(output_dir / f"uaspeech_recordings_typical_speakers_test.jsonl.gz")
+        typical_supervision_test_set.to_file(output_dir / f"uaspeech_supervisions_typical_speakers_test.jsonl.gz")
 
     return {
-        "typical_train_recordings": typical_recording_train_set,
         "atypical_train_recordings": atypical_recording_train_set,
-        "typical_test_recordings": typical_recording_test_set,
+        "atypical_train_supervisions": atypical_supervision_train_set,
+        "typical_train_recordings": typical_recording_train_set,
+        "typical_train_supervisions": typical_supervision_train_set,   
         "atypical_test_recordings": atypical_recording_test_set,
+        "atypical_test_supervisions": typical_supervision_test_set,
+        "typical_test_recordings": typical_recording_test_set,
+        "typical_test_supervisions": typical_supervision_test_set,
     }
 
 # TEMPORARY TEST SCRIPT

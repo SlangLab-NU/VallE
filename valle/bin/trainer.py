@@ -513,9 +513,15 @@ def compute_loss(
         else next(model.parameters()).device
     )
     
+    # at entry, TextTokens is (N, P)
+    text_tokens = batch["text_tokens"].to(device)
+    text_tokens_lens = batch["text_tokens_lens"].to(device)
+    assert text_tokens.ndim == 2
+
     """
     The batch info:
         'utt_id': str
+        'text': str
         'audio': (NumSamples,) float tensor
         'audio_lens': int tensor
         'audio_features': (NumFrames x NumFeatures) float tensor
@@ -524,6 +530,8 @@ def compute_loss(
         'target_audio_lens': int tensor
         'target_audio_features': (NumFrames x NumFeatures) float tensor
         'target_audio_features_lens': int tensor
+        'text_tokens': text_tokens,
+        'text_tokens_lens': text_tokens_lens,
     
     So replace ['text_tokens'] with the respective target_audio
     """
@@ -538,6 +546,8 @@ def compute_loss(
     # Where forward() for model will be called
     with torch.set_grad_enabled(is_training):
         predicts, loss, metrics = model(
+            text=text_tokens,
+            text_lens=text_tokens_lens,
             x=audio_features, # atypical speaker
             x_lens=audio_features_lens,
             y=target_audio_features, # typical speaker

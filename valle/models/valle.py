@@ -775,9 +775,11 @@ class VALLE(VALLF):
             nar_scale_factor=nar_scale_factor,
             **kwargs,
         )
-    # TODO Test two parallel typical speakers
+    # TODO Add text back into forward pass
     def forward(
         self,
+        text: torch.tensor,
+        text_len: torch.Tensor,
         x: Union[torch.Tensor, PromptedFeatures],
         x_lens: Union[torch.Tensor, PromptedFeatures],
         y: Union[torch.Tensor, PromptedFeatures],
