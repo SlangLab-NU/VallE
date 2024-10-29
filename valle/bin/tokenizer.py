@@ -256,6 +256,68 @@ def main():
             raise ValueError("The audio extractor settings or the prefix did not match the expected conditions.")
         return extract_audio_features(tgt_cuts, tgt_storage_path)
 
+    def extract_text_phonemes(phoneme_symbols, cut_set):
+        """
+        Extracts the text and phonemes for a given cutset
+        @param cut_set: The cutset to extract text and phonemes of
+        @return: no return, but writes k2 text symbols to new file
+        """
+        # cut_set = CutSet.from_manifests(
+        #             recordings=m["recordings"],
+        #             supervisions=m["supervisions"],
+        #         )
+        if args.text_extractor:
+            print("TEXT EXTRACTOR RAN")
+            if (
+                args.prefix == "baker"
+                and args.text_extractor == "labeled_pinyin"
+            ):
+                for c in tqdm(cut_set):
+                    phonemes = c.supervisions[0].custom["tokens"]["text"]
+                    phoneme_symbols.update(phonemes)
+            else:
+                for c in tqdm(cut_set):
+                    if args.prefix == "ljspeech":
+                        text = c.supervisions[0].custom["normalized_text"]
+                        text = text.replace("”", '"').replace("“", '"')
+                        phonemes = tokenize_text(text_tokenizer, text=text)
+                    elif args.prefix == "aishell":
+                        phonemes = tokenize_text(
+                            text_tokenizer, text=c.supervisions[0].text
+                        )
+                        c.supervisions[0].custom = {}
+                    elif args.prefix == "uaspeech":
+                        if c.supervisions[0].text != None:
+                            phonemes = tokenize_text(
+                                text_tokenizer, text=c.supervisions[0].text
+                            )
+                            c.supervisions[0].custom = {}
+                        else:
+                            logging.info(f"Supervision empty: {c}")
+                    else:
+                        assert args.prefix == "libritts"
+                        phonemes = tokenize_text(
+                            text_tokenizer, text=c.supervisions[0].text
+                        )
+                    c.supervisions[0].custom["tokens"] = {"text": phonemes}
+                    phoneme_symbols.update(phonemes)
+        
+        logging.info(f"Writing cutset to: {partition}")
+        cuts_filename = f"{partition}.json"
+        cut_set.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
+        # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
+        # TODO Figure out why phonemes aren't being written to file
+        # I think it is happening too early here.
+        if args.text_extractor:
+            unique_phonemes = SymbolTable()
+            for s in sorted(list(phoneme_symbols)):
+                print(s)
+                unique_phonemes.add(s)
+            logging.info(f"{len(phoneme_symbols)} unique phonemes: {phoneme_symbols}")
+
+            unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
+            unique_phonemes.to_file(unique_phonemes_file)
+    
     def process_src_tgt_cuts(src, tgt):
         """
         Extracts audio features of the source speaker and pairs it with the features of the target speaker
@@ -288,6 +350,7 @@ def main():
                  # Extract features for the source cuts
                 src_cuts = extract_audio_features(src_cuts, src_storage_path)
                 print(f" COMPARE CUTS: {len(tgt_cuts)}, {len(src_cuts)}")
+
                 mismatch = []
                 # Assign the computed target features to the source
                 for src_cut, tgt_cut in zip(src_cuts, tgt_cuts):
@@ -300,14 +363,62 @@ def main():
                     if temp_src != temp_tgt:
                         mismatch.append(temp_src)
                         continue
-                    # source_audio_path = src_cut.recording.sources[0].source
-                    # target_audio_path = get_target_audio_path(source_audio_path, src_speaker, tgt_speaker)
                     else:
                         src_cut.target_recording = tgt_cut
-                    # src_cut.target_recording = {"target_recording": tgt_cut}
-                print(len(mismatch))    
-        print(f"Writing file cuts_{src_partition}.json")
-        src_cuts.to_file(f"{args.output_dir}/cuts_{src_partition}.json")
+            if args.text_extractor:
+                print("TEXT EXTRACTOR RAN")
+                if (
+                    args.prefix == "baker"
+                    and args.text_extractor == "labeled_pinyin"
+                ):
+                    for c in tqdm(src_cuts):
+                        phonemes = c.supervisions[0].custom["tokens"]["text"]
+                        unique_symbols.update(phonemes)
+                else:
+                    for c in tqdm(src_cuts):
+                        if args.prefix == "ljspeech":
+                            text = c.supervisions[0].custom["normalized_text"]
+                            text = text.replace("”", '"').replace("“", '"')
+                            phonemes = tokenize_text(text_tokenizer, text=text)
+                        elif args.prefix == "aishell":
+                            phonemes = tokenize_text(
+                                text_tokenizer, text=c.supervisions[0].text
+                            )
+                            c.supervisions[0].custom = {}
+                        elif args.prefix == "uaspeech":
+                            if c.supervisions[0].text != None:
+                                phonemes = tokenize_text(
+                                    text_tokenizer, text=c.supervisions[0].text
+                                )
+                                c.supervisions[0].custom = {}
+                            else:
+                                logging.info(f"Supervision empty: {c}")
+                        else:
+                            assert args.prefix == "libritts"
+                            phonemes = tokenize_text(
+                                text_tokenizer, text=c.supervisions[0].text
+                            )
+                        c.supervisions[0].custom["tokens"] = {"text": phonemes}
+                        unique_symbols.update(phonemes)
+        
+            logging.info(f"Writing cutset to: {src_partition}")
+            cuts_filename = f"{src_partition}.{args.suffix}"
+            src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
+        # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
+        # TODO Figure out why phonemes aren't being written to file
+        # I think it is happening too early here.
+        if args.text_extractor:
+            unique_phonemes = SymbolTable()
+            for s in sorted(list(unique_symbols)):
+                print(s)
+                unique_phonemes.add(s)
+            logging.info(f"{len(unique_symbols)} unique phonemes: {unique_symbols}")
+
+            unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
+            unique_phonemes.to_file(unique_phonemes_file)
+            # extract_text_phonemes(unique_symbols, src_cuts)
+        # print(f"Writing file cuts_{src_partition}.jsonl.gz")
+        # src_cuts.to_file(f"{args.output_dir}/cuts_{src_partition}.json")
     
 
     with get_executor() as ex:
@@ -338,53 +449,7 @@ def main():
         process_src_tgt_cuts(source_train_cuts, target_train_cuts)
         process_src_tgt_cuts(source_test_cuts, target_test_cuts)
 
-        # TextTokenizer
-        if args.text_extractor:
-            if (
-                args.prefix == "baker"
-                and args.text_extractor == "labeled_pinyin"
-            ):
-                for c in tqdm(cut_set):
-                    phonemes = c.supervisions[0].custom["tokens"]["text"]
-                    unique_symbols.update(phonemes)
-            else:
-                for c in tqdm(cut_set):
-                    if args.prefix == "ljspeech":
-                        text = c.supervisions[0].custom["normalized_text"]
-                        text = text.replace("”", '"').replace("“", '"')
-                        phonemes = tokenize_text(text_tokenizer, text=text)
-                    elif args.prefix == "aishell":
-                        phonemes = tokenize_text(
-                            text_tokenizer, text=c.supervisions[0].text
-                        )
-                        c.supervisions[0].custom = {}
-                    elif args.prefix == "uaspeech":
-                        if c.supervisions[0].text != None:
-                            phonemes = tokenize_text(
-                                text_tokenizer, text=c.supervisions[0].text
-                            )
-                            c.supervisions[0].custom = {}
-                        else:
-                            logging.info(f"Supervision empty: {c}")
-                    else:
-                        assert args.prefix == "libritts"
-                        phonemes = tokenize_text(
-                            text_tokenizer, text=c.supervisions[0].text
-                        )
-                    c.supervisions[0].custom["tokens"] = {"text": phonemes}
-                    unique_symbols.update(phonemes)
-
-        cuts_filename = f"{prefix}cuts_{partition}.{args.suffix}"
-        cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
-
-    if args.text_extractor:
-        unique_phonemes = SymbolTable()
-        for s in sorted(list(unique_symbols)):
-            unique_phonemes.add(s)
-        logging.info(f"{len(unique_symbols)} unique phonemes: {unique_symbols}")
-
-        unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
-        unique_phonemes.to_file(unique_phonemes_file)
+        
 
 if __name__ == "__main__":
     formatter = (

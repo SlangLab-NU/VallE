@@ -120,26 +120,27 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
 
         for transform in self.feature_transforms:
             target_audio_features = transform(target_audio_features)
-
-        print(f"Processed batch for cuts: {[cut.id for cut in cuts]}")
-
-        print("GET ITEM WAS CALLED")
-        print(f"utt_id: {[cut.id for cut in cuts]}")
-        print(f"text: {[cut.supervisions[0].text for cut in cuts]}")
-        print(f"audio: {audio}")
-        print(f"audio_lens: {audio_lens}")
-        print(f"audio_features: {audio_features}")
-        print(f"audio_features_lens: {audio_features_lens}")
-        print(f"target_audio: {target_audio}")
-        print(f"target_audio_lens: {target_audio_lens}")
-        print(f"target_audio_features: {target_audio_features}")
-        print(f"target_audio_features_lens: {target_audio_features_lens}")
-        print(f"text_tokens: {text_tokens}")
-        print(f"text_tokens_lens: {text_tokens_lens}")
-
+        
         text_tokens, text_tokens_lens = self.text_token_collater(
             [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
         )
+        # print(text_tokens, text_tokens_lens)
+
+        # print(f"Processed batch for cuts: {[cut.id for cut in cuts]}")
+
+        # print("GET ITEM WAS CALLED")
+        # print(f"utt_id: {[cut.id for cut in cuts]}")
+        # print(f"text: {[cut.supervisions[0].text for cut in cuts]}")
+        # print(f"audio: {audio}")
+        # print(f"audio_lens: {audio_lens}")
+        # print(f"audio_features: {audio_features}")
+        # print(f"audio_features_lens: {audio_features_lens}")
+        # print(f"target_audio: {target_audio}")
+        # print(f"target_audio_lens: {target_audio_lens}")
+        # print(f"target_audio_features: {target_audio_features}")
+        # print(f"target_audio_features_lens: {target_audio_features_lens}")
+        # print(f"text_tokens: {text_tokens}")
+        # print(f"text_tokens_lens: {text_tokens_lens}")
 
         return {
             "utt_id": [cut.id for cut in cuts],

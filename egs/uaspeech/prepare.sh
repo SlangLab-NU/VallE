@@ -97,13 +97,13 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
   echo ${mid_index_test}
   # dev atypical
   lhotse subset --last ${mid_index_test}\
-    ${audio_feats_dir}/cuts_atypical_speakers_test.json \
-    ${audio_feats_dir}/cuts_atypical_speakers_dev.json
+    ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
+    ${audio_feats_dir}/cuts_atypical_speakers_dev.jsonl.gz
   
   # test atypical
   lhotse subset --first ${mid_index_test} \
-    ${audio_feats_dir}/cuts_atypical_speakers_test.json \
-    ${audio_feats_dir}/cuts_atypical_speakers_test.json
+    ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
+    ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz
 
   touch ${audio_feats_dir}/.uaspeech.done
 

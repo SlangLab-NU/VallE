@@ -56,6 +56,27 @@ def get_args():
     )
 
     parser.add_argument(
+        "--text-prompts",
+        type=str,
+        default="",
+        help="Text prompts which are separated by |.",
+    )
+
+    parser.add_argument(
+        "--text",
+        type=str,
+        default="To get up and running quickly just follow the steps below.",
+        help="Text to be synthesized.",
+    )
+
+    parser.add_argument(
+        "--text-extractor",
+        type=str,
+        default="espeak",
+        help="espeak or pypinyin or pypinyin_initials_finals",
+    )
+
+    parser.add_argument(
         "--checkpoint",
         type=str,
         default="exp/vallf_nano_full/checkpoint-100000.pt",
@@ -102,17 +123,22 @@ def load_model(checkpoint, device):
     model.to(device)
     model.eval()
 
-    return model
+    text_tokens = args.text_tokens
+
+    return model, text_tokens
 
 
 @torch.no_grad()
 def main():
     args = get_args()
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    model = load_model(args.checkpoint, device)
+    model, text_tokens = load_model(args.checkpoint, device)
+    text_tokenizer = TextTokenizer(backend=args.text_extractor)
     audio_tokenizer = AudioTokenizer()
-
+    text_collater = get_text_token_collater(text_tokens)
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+
+    text_prompts = " ".join(args.text_prompts.split("|"))
 
     atypical_audio_prompts = []
     if args.atypical_audio:
@@ -123,12 +149,26 @@ def main():
         atypical_audio_prompts = torch.concat(atypical_audio_prompts, dim=-1).transpose(2, 1)
         atypical_audio_prompts = atypical_audio_prompts.to(device)
 
-    # Synthesize typical speech from atypical speech
-    encoded_frames = model.inference(
-        atypical_audio_prompts,
-        top_k=args.top_k,
-        temperature=args.temperature,
-    )
+    for n, text in enumerate(args.text.split("|")):
+        logging.info(f"synthesize text: {text}")
+        text_tokens, text_tokens_lens = text_collater(
+            [
+                tokenize_text(
+                    text_tokenizer, text=f"{text_prompts} {text}".strip()
+                )
+            ]
+        )
+
+        
+        # Synthesize typical speech from atypical speech
+        encoded_frames = model.inference(
+            text_tokens.to(device),
+            text_tokens_lens.to(device),
+            atypical_audio_prompts,
+            top_k=args.top_k,
+            temperature=args.temperature,
+            )
+        
     print(f"encoded_frames size: {encoded_frames.shape}")
     samples = audio_tokenizer.decode([(encoded_frames.transpose(2, 1), None)])
     # Save the output audio

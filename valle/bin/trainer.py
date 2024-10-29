@@ -1167,7 +1167,7 @@ def scan_pessimistic_batches_for_oom(
             print(f"Skipping already processed batch for criterion: {criterion}")
             continue
 
-        # print(f"LOADING BATCH\n{criterion}\n{cuts}")
+        print(f"LOADING BATCH\n{criterion}\n{cuts}")
         try:
             batch = train_dl.dataset[cuts]
 

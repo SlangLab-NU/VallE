@@ -21,6 +21,7 @@ egs/uaspeech/uaspeechTrainStage2/*
 egs/uaspeech/tensorboard_stage1/*
 egs/uaspeech/tensorboard_stage2/*
 egs/uaspeech/uaspeech/*
+egs/uaspeech/linguistic_input*
 egs/uaspeech/uaspeech_run*
 egs/uaspeech/typical_test*
 egs/uaspeech/like_pairs*
