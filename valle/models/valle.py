@@ -898,17 +898,25 @@ class VALLE(VALLF):
                 (text_len, y_len),
                 value=True,
             )
+
+            text_x_attn_mask = F.pad(
+                torch.zeros((text_len + x_len, text_len + x_len), dtype=torch.bool, device=text.device),
+                (0, y_len),
+                value=True,
+            )
+
             # Causal attention mask for `y` (typical speech) - upper triangular
             y_attn_mask = F.pad(
                 torch.triu(
-                    torch.ones(y_len, y_len, dtype=torch.bool, device=x.device),
+                    torch.ones(y_len, y_len, dtype=torch.bool, device=y.device),
                     diagonal=1,
                 ),
-                (text_len + x_len, 0),
+                (text_len, x_len),
                 value=False,
             )
-
-            xy_attn_mask = torch.concat([text_attn_mask, x_attn_mask, y_attn_mask], dim=0)
+            # TEST
+            xy_attn_mask = torch.concat([text_x_attn_mask, y_attn_mask], dim=0)
+            # xy_attn_mask = torch.concat([text_attn_mask, x_attn_mask, y_attn_mask], dim=0)
             # merge key padding and attention masks
             bsz, src_len = x.shape[0], text_len + x_len + y_len
             _xy_padding_mask = (
@@ -955,7 +963,7 @@ class VALLE(VALLF):
             ).item() * y_lens.sum().type(torch.float32)
         if self.num_quantizers == 1:
             return ((text_emb, x, codes), total_loss, metrics)
-
+        # TODO Make diagram of attn masking at each stage
         # Non-AR Decoders
         if self.ar_audio_prepend_bos:
             y = y[:, 1:]
@@ -966,6 +974,10 @@ class VALLE(VALLF):
                 weights=[1.0 / num_nar_layers] * num_nar_layers,
                 k=1,
             )[0]
+
+            text = self.nar_text_embedding(text)
+            text = self.nar_text_prenet(text)
+            text = self.nar_text_position(text)
 
             y_emb, prefix_len = self._prepare_prompts(
                 y, y_lens, codes, nar_stage, y_prompts_codes
@@ -986,13 +998,13 @@ class VALLE(VALLF):
 
             y_pos = self.nar_audio_prenet(y_emb)
             y_pos = self.nar_audio_position(y_pos)
-            xy_pos = torch.concat([x, y_pos], dim=1) # <- ATYPICAL SPEECH IS X
+            xy_pos = torch.concat([text, x, y_pos], dim=1) # <- ATYPICAL SPEECH IS X
             xy_dec, _ = self.nar_decoder(
                 (xy_pos, self.nar_stage_embeddings[nar_stage - 1].weight),
                 src_key_padding_mask=xy_padding_mask,
                 # is_causal=False,
             )
-            xy_dec = xy_dec[:, x_lens.max() + prefix_len :]
+            xy_dec = xy_dec[:, text_lens.max() + x_lens.max() + prefix_len :]
             if self.prefix_mode == 4:
                 prefix_len = 0  # reset for Top10Accuracy metric
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
@@ -1039,7 +1051,7 @@ class VALLE(VALLF):
         if train_stage == 0:
             total_loss = total_loss / 2.0
 
-        return ((x, codes), total_loss, metrics)
+        return ((text, x, codes), total_loss, metrics)
 
     def inference(
     self, # try inputting audio twice for both x and y
@@ -1074,8 +1086,10 @@ class VALLE(VALLF):
 
         text_len = text_lens.max()
         text_attn_mask = torch.zeros((text_len, text_len), dtype=torch.bool)
+        
 
         x = audio_prompts[..., 0]
+        print(f"Text shape: {text.shape}")
         print(f"X shape: {x.shape}")
         # Pass x through the decoder
         x = self.ar_audio_embedding(x)
@@ -1086,14 +1100,13 @@ class VALLE(VALLF):
         
         # Initialize y with just the first token (or BOS if needed)
         y = torch.zeros((audio_prompts.shape[0], 1), device=audio_prompts.device, dtype=torch.long)
-
         print(f"Y shape before prepend: {y.shape}")
         if self.ar_audio_prepend_bos:
             print("prepend bos occured")
             y = F.pad(y, (1, 0), value=NUM_AUDIO_TOKENS + 1)
         
         x_len = audio_prompts.shape[1]
-        x_attn_mask = torch.zeros((x_len, x_len), dtype=torch.bool)
+        x_attn_mask = torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device)
        
         while True:          
 
@@ -1107,26 +1120,42 @@ class VALLE(VALLF):
             
             y_len = y.shape[1]
             # Attention mask for `text` - unmasked (i.e. model sees whole input)
-            text_attn_mask = F.pad(
-                torch.zeros((text_len, text_len), dtype=torch.bool, device=text.device),
-                (0, x_len + y_len),
+            # text_attn_mask = F.pad(
+            #     torch.zeros((text_len, text_len), dtype=torch.bool, device=text.device),
+            #     (0, x_len + y_len),
+            #     value=True,
+            # )
+            # # Attention mask for `x` - unmasked (i.e. model sees whole input)
+            # x_attn_mask_pad = F.pad(
+            #     x_attn_mask, (text_len, y_len), value=True
+            # )
+
+            # TEST: Allow text and x to attend to each other
+            text_x_attn_mask = F.pad(
+                torch.zeros((text_len + x_len, text_len + x_len), dtype=torch.bool, device=text.device),
+                (0, y_len),
                 value=True,
             )
-            # Attention mask for `x` - unmasked (i.e. model sees whole input)
-            x_attn_mask_pad = F.pad(
-                x_attn_mask, (text_len, y_len), value=True,
-            )
+
             # Causal attention mask for `y` (typical speech) - upper triangular
             y_attn_mask = F.pad(
                 torch.triu(
-                    torch.ones(y_len, y_len, dtype=torch.bool, device=x.device),
+                    torch.ones(y_len, y_len, dtype=torch.bool, device=y.device),
                     diagonal=1,
                 ),
-                (text_len + x_len, 0),
+                (text_len, x_len),
                 value=False,
             )
 
-            xy_attn_mask = torch.cat([text_attn_mask, x_attn_mask_pad, y_attn_mask], dim=0).to(y.device)
+            print(f"text_attn_mask device: {text_x_attn_mask.device}")
+            # print(f"x_attn_mask_pad device: {x_attn_mask_pad.device}")
+            print(f"y_attn_mask device: {y_attn_mask.device}")
+            print(f"y device: {y.device}")
+
+            # Test
+            xy_attn_mask = torch.concat([text_x_attn_mask, y_attn_mask], dim=0)
+
+            # xy_attn_mask = torch.cat([text_attn_mask, x_attn_mask_pad, y_attn_mask], dim=0).to(y.device)
             
             # Pass atypical speech (x) and predicted tokens (y) through the decoder
             # Overall flow:

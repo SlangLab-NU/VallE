@@ -298,7 +298,7 @@ def create_speaker_speaker_pair(
 # atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
 
 control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
-atypical_speakers = ["CF03", "CF02", "CM05", "CM08", "CM13"]
+atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
 
 create_speaker_speaker_pair(UASPEECH_PATH, control_speakers, atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
 

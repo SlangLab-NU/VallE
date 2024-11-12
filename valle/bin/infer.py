@@ -174,7 +174,7 @@ def main():
     # Save the output audio
     for audio_file in args.atypical_audio.split(","):
         base_name = os.path.splitext(os.path.basename(audio_file))[0]
-        output_file = f"{args.output_dir}/{base_name}_output_similar_sounding_pairs.wav"
+        output_file = f"{args.output_dir}/{base_name}_with_text_sameSpeakerNAR_newMasking.wav"
     torchaudio.save(output_file, samples[0].cpu(), 24000)
 
 
