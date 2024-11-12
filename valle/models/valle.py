@@ -899,6 +899,7 @@ class VALLE(VALLF):
                 value=True,
             )
 
+            # TEST combined mask instead of the above 2
             text_x_attn_mask = F.pad(
                 torch.zeros((text_len + x_len, text_len + x_len), dtype=torch.bool, device=text.device),
                 (0, y_len),
