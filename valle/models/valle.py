@@ -348,7 +348,7 @@ class VALLF(nn.Module):
             )
         # inputs, targets
         return targets[:, :-1], targets[:, 1:]
-
+    
     def _prepare_prompts(self, y, y_lens, codes, nar_stage, y_prompts_codes):
         # 5.1 For the NAR acoustic prompt tokens, we select a random segment waveform of 3 seconds
         # from the same utterance.
@@ -851,18 +851,12 @@ class VALLE(VALLF):
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
-        
-        x, _ = self.pad_y_eos(
-            x_codes[..., 0], x_mask_int, eos_id=NUM_AUDIO_TOKENS
-        )
+
+        x = x_codes[..., 0]
 
         # Get longest text sequence
         text_len = text_lens.max()
-
-        # Embed `x` (atypical speech) using the audio embedding layers
-        x = self.ar_audio_embedding(x)  # Using the same audio embedding layer
-        x = self.ar_audio_prenet(x)
-        x = self.ar_audio_position(x)
+        
         x_len = x_lens.max() # Get max sequence length for padding
 
         metrics = {}
@@ -877,12 +871,17 @@ class VALLE(VALLF):
             print(f"BOS prepended: {ar_xy_padding_mask}")
         else:
             ar_xy_padding_mask = xy_padding_mask
-            print(f"BOS prepended: {ar_xy_padding_mask}")
+            print(f"BOS not prepended: {ar_xy_padding_mask}")
         # AR Decoder
         if train_stage in [0, 1]:
             text_emb = self.ar_text_embedding(text)
             text_emb = self.ar_text_prenet(text_emb)
             text_emb = self.ar_text_position(text_emb)
+
+            # Embed `x` (atypical speech) using the audio embedding layers
+            x = self.ar_audio_embedding(x)  # Using the same audio embedding layer
+            x = self.ar_audio_prenet(x)
+            x = self.ar_audio_position(x)
 
             y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
 
@@ -892,31 +891,41 @@ class VALLE(VALLF):
                 (0, x_len + y_len),
                 value=True,
             )
+            print(f"text_attn_mask shape: {text_attn_mask.shape}")
+            print(f"text_attn_mask: {text_attn_mask}")
             # Attention mask for `x` - unmasked (i.e. model sees whole input)
             x_attn_mask = F.pad(
                 torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device),
                 (text_len, y_len),
                 value=True,
             )
-
+            print(f"x_attn_mask shape: {x_attn_mask.shape}")
+            print(f"x_attn_mask: {x_attn_mask}")
             # TEST combined mask instead of the above 2
             text_x_attn_mask = F.pad(
                 torch.zeros((text_len + x_len, text_len + x_len), dtype=torch.bool, device=text.device),
                 (0, y_len),
                 value=True,
             )
-
+            print(f"text_x_attn_mask shape: {text_x_attn_mask.shape}")
+            print(f"text and x attn mask: {text_x_attn_mask}")
             # Causal attention mask for `y` (typical speech) - upper triangular
             y_attn_mask = F.pad(
                 torch.triu(
                     torch.ones(y_len, y_len, dtype=torch.bool, device=y.device),
                     diagonal=1,
                 ),
-                (text_len, x_len),
+                (text_len + x_len, 0),
                 value=False,
             )
+            print(f"y_attn_mask shape: {y_attn_mask.shape}")
+            print(f"y attn mask: {y_attn_mask}")
             # TEST
             xy_attn_mask = torch.concat([text_x_attn_mask, y_attn_mask], dim=0)
+
+            print(f"concat attn_mask shape: {xy_attn_mask.shape}")
+            print(f"concat attn mask: {xy_attn_mask}")
+
             # xy_attn_mask = torch.concat([text_attn_mask, x_attn_mask, y_attn_mask], dim=0)
             # merge key padding and attention masks
             bsz, src_len = x.shape[0], text_len + x_len + y_len
@@ -944,6 +953,8 @@ class VALLE(VALLF):
                 (xy_pos, None),
                 mask=xy_attn_mask,
             )
+            print(f"Decoder type: {type(xy_dec)}")
+            print(f"Decoder shape: {xy_dec.shape}")
             # Predict the logits for the typical speech sequence
             logits = self.ar_predict_layer(xy_dec[:, text_len + x_len:]).permute(0, 2, 1)
             
@@ -979,6 +990,12 @@ class VALLE(VALLF):
             text = self.nar_text_embedding(text)
             text = self.nar_text_prenet(text)
             text = self.nar_text_position(text)
+            # TODO create x_emb same as y_emb here. 
+            # Should be treating x same as y here
+
+            x_emb, _ = self._prepare_prompts(
+                x, x_lens, x_codes, nar_stage, x_prompts_codes
+            )
 
             y_emb, prefix_len = self._prepare_prompts(
                 y, y_lens, codes, nar_stage, y_prompts_codes
@@ -996,13 +1013,40 @@ class VALLE(VALLF):
                 )
             elif self.prefix_mode == 1:
                 targets = targets[:, prefix_len:]
+            # ------------------------------------------ TEST ------------------------------------------------
+            # TODO DO i need some explicit EOS for the text??
+            # No, xy_padding_mask should act as the boundary indicator for the NAR model, replacing need for EOS
+            print(f"text_xy_padding_mask: {xy_padding_mask}")
+            
+            # Allow `text` and `x` to attend fully to each other
+            text_x_attn_mask = F.pad(
+                torch.zeros((text_len + x_len, text_len + x_len), dtype=torch.bool, device=text.device),
+                (0, y_len),  # Padding for `y`
+                value=True,
+            )
+
+            # Allow `y` to attend to both `text` and `x` without causal masking
+            y_attn_mask = F.pad(
+                torch.zeros((y_len, y_len), dtype=torch.bool, device=y.device),  # Fully visible within `y`
+                (text_len + x_len, 0),  # Padding for `text` and `x`
+                value=True,
+            )
+            # Combine into one attention mask
+            xy_attn_mask = torch.concat([text_x_attn_mask, y_attn_mask], dim=0)
+            # ------------------------------------------------------------------------------------------------
+
+            x_pos = self.nar_audio_prenet(x_emb)
+            x_pos = self.nar_audio_position(x_pos)
 
             y_pos = self.nar_audio_prenet(y_emb)
             y_pos = self.nar_audio_position(y_pos)
-            xy_pos = torch.concat([text, x, y_pos], dim=1) # <- ATYPICAL SPEECH IS X
+
+            xy_pos = torch.concat([text, x_pos, y_pos], dim=1) # <- ATYPICAL SPEECH IS X
+            
             xy_dec, _ = self.nar_decoder(
                 (xy_pos, self.nar_stage_embeddings[nar_stage - 1].weight),
-                src_key_padding_mask=xy_padding_mask,
+                src_key_padding_mask=xy_padding_mask, 
+                # mask=xy_attn_mask,
                 # is_causal=False,
             )
             xy_dec = xy_dec[:, text_lens.max() + x_lens.max() + prefix_len :]
@@ -1011,6 +1055,8 @@ class VALLE(VALLF):
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
                 0, 2, 1
             )
+            print(f"X shape: {x.shape}")
+            print(f"Y shape: {y.shape}")
             print(f"Logits shape: {logits.shape}")
             softmax_output = F.softmax(logits, dim=1)
 
@@ -1092,6 +1138,9 @@ class VALLE(VALLF):
         x = audio_prompts[..., 0]
         print(f"Text shape: {text.shape}")
         print(f"X shape: {x.shape}")
+        print(f"X: {x}")
+        print(f"audio prompts shape: {audio_prompts.shape}")
+        print(f"audio prompts: {audio_prompts}")
         # Pass x through the decoder
         x = self.ar_audio_embedding(x)
         x = self.ar_audio_prenet(x)
@@ -1110,7 +1159,7 @@ class VALLE(VALLF):
         x_attn_mask = torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device)
        
         while True:          
-
+            
             # Pass y through the decoder after concatenating with x
             y_emb = self.ar_audio_embedding(y)
             y_emb = self.ar_audio_prenet(y_emb)
@@ -1144,14 +1193,9 @@ class VALLE(VALLF):
                     torch.ones(y_len, y_len, dtype=torch.bool, device=y.device),
                     diagonal=1,
                 ),
-                (text_len, x_len),
+                (text_len + x_len, 0),
                 value=False,
             )
-
-            print(f"text_attn_mask device: {text_x_attn_mask.device}")
-            # print(f"x_attn_mask_pad device: {x_attn_mask_pad.device}")
-            print(f"y_attn_mask device: {y_attn_mask.device}")
-            print(f"y device: {y.device}")
 
             # Test
             xy_attn_mask = torch.concat([text_x_attn_mask, y_attn_mask], dim=0)
@@ -1195,45 +1239,37 @@ class VALLE(VALLF):
         print(f"AR CODES: {codes}")
         if self.num_quantizers == 1:
             return torch.stack(codes, dim=-1)
-
+        x = audio_prompts[..., 0]
         # Non-AR Decoders
-        y_emb = self.nar_audio_embeddings[0](
-            y[:, int(self.ar_audio_prepend_bos) :]
-        )
-        print(f"Initial NAR y_emb size: {y_emb.size()}")
-        
+        y_emb = self.nar_audio_embeddings[0](y[:, int(self.ar_audio_prepend_bos) :])
+        x_emb = self.nar_audio_embeddings[0](x[:, int(self.ar_audio_prepend_bos) :])
+
+        # assert y_emb.size(1) == x_emb.size(1), f"y_emb length {y_emb.size(1)} != x_emb length {x_emb.size(1)}"
+
+        text = self.nar_text_embedding(text)
+        text = self.nar_text_prenet(text)
+        text = self.nar_text_position(text)
+
         for i, (predict_layer, embedding_layer) in enumerate(
-            zip(
-                self.nar_predict_layers,
-                self.nar_audio_embeddings[1:],
-            )
+            zip(self.nar_predict_layers, self.nar_audio_embeddings[1:])
         ):
+            x_pos = self.nar_audio_prenet(x_emb)
+            x_pos = self.nar_audio_position(x_pos)
             y_pos = self.nar_audio_prenet(y_emb)
             y_pos = self.nar_audio_position(y_pos)
-            print(f"y_pos size before padding: {y_pos.size()}")
             
-            # xy_pos = torch.concat([prompts, y_pos], dim=1)
+            xy_pos = torch.cat([x_pos, y_pos], dim=1)
+            print(f"xy_pos: {xy_pos.shape}")
+            xy_dec, _ = self.nar_decoder((xy_pos, self.nar_stage_embeddings[i].weight))
+            logits = predict_layer(xy_dec[:, x_len:])
             
-            xy_dec, _ = self.nar_decoder(
-            (y_pos, self.nar_stage_embeddings[i].weight)
-            )
-            
-            # In the NAR decoder, we are generating all tokens at once, but still need to process only a specific part of the sequence.
-            logits = predict_layer(xy_dec[:, :]) # Calculate raw scores for each possible output token
-            print(f"logits size after NAR decoder: {logits.size()}")
-
             samples = torch.argmax(logits, dim=-1)
-            print(f"NAR samples size: {samples.size()}")
-            
+            print(f"Samples shape: {samples.shape}")
             codes.append(samples)
 
-            # print(f"CODES: {codes}")
             if i < self.num_quantizers - 2:
-                y_emb += embedding_layer(samples)
-        print(f"NAR codes: {codes}")
-        print(f"Final output: {torch.stack(codes, dim=-1)}")
-        assert len(codes) == self.num_quantizers
-        print(f"Final output size: {torch.stack(codes, dim=-1).shape}")
+                y_emb[:, x_len:] += embedding_layer(samples)
+
         return torch.stack(codes, dim=-1)
 
     def continual(
