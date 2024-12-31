@@ -151,10 +151,12 @@ def main():
 
     for n, text in enumerate(args.text.split("|")):
         logging.info(f"synthesize text: {text}")
+        logging.info(f"Text Prompt: {text_prompts}")
+        # TODO understand the text_prompts and text as input to inference
         text_tokens, text_tokens_lens = text_collater(
             [
                 tokenize_text(
-                    text_tokenizer, text=f"{text_prompts} {text}".strip()
+                    text_tokenizer, text=f"{text}".strip()
                 )
             ]
         )
@@ -174,7 +176,7 @@ def main():
     # Save the output audio
     for audio_file in args.atypical_audio.split(","):
         base_name = os.path.splitext(os.path.basename(audio_file))[0]
-        output_file = f"{args.output_dir}/{base_name}_with_text_sameSpeakerAR_newAttnMask4.wav"
+        output_file = f"{args.output_dir}/{base_name}_with_text_sameSpeakerFull_newAttnMask5.wav"
     torchaudio.save(output_file, samples[0].cpu(), 24000)
 
 
