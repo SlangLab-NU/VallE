@@ -872,10 +872,8 @@ class VALLE(VALLF):
             ar_xy_padding_mask = torch.concat(
                 [text_mask, x_mask, F.pad(y_mask, (1, 0), value=False)], dim=1
             )
-            print(f"BOS prepended: {ar_xy_padding_mask}")
         else:
             ar_xy_padding_mask = xy_padding_mask
-            print(f"BOS not prepended: {ar_xy_padding_mask}")
         # AR Decoder
         if train_stage in [0, 1]:
             text_emb = self.ar_text_embedding(text)
@@ -990,8 +988,9 @@ class VALLE(VALLF):
                 weights=[1.0 / num_nar_layers] * num_nar_layers,
                 k=1,
             )[0]
-            # PARAM CHECK
-            
+            # CHECK WEIGHTS
+            print("Initial AR Prediction Layer weights:", self.ar_predict_layer.weight)
+            print("Initial NAR Prediction Layer weights:", self.nar_predict_layers[0].weight)   
             text = self.nar_text_embedding(text)
             text = self.nar_text_prenet(text)
             text = self.nar_text_position(text)
