@@ -16,6 +16,7 @@ import random
 from typing import Dict, Iterator, List, Tuple, Union
 
 import torch
+import logging
 import torch.nn as nn
 import torch.nn.functional as F
 from icefall.utils import make_pad_mask
@@ -779,6 +780,38 @@ class VALLE(VALLF):
             nar_scale_factor=nar_scale_factor,
             **kwargs,
         )
+    
+    def display_info(
+        self, 
+        input_args=dict, 
+        attn_args=dict, 
+        pred_targs=dict, 
+        shapes=bool, 
+        values=bool, 
+        input_tensors=bool, 
+        masks=bool, 
+        predictions_targets=bool
+    ):
+        if input_tensors and len(input_args) > 0:
+            for key, value in input_args.items():
+                if shapes:
+                    logging.info(f"{key} shape: {value.shape}")
+                if values:
+                        logging.info(f"{key}: {value}")
+        if masks and len(input_args) > 0:
+            for key, value in attn_args.items():
+                if shapes:
+                    logging.info(f"{key} shape: {value.shape}")
+                if values:
+                        logging.info(f"{key}: {value}")
+        if predictions_targets and len(input_args) > 0:
+            for key, value in pred_targs.items():
+                if shapes:
+                    logging.info(f"{key} shape: {value.shape}")
+                if values:
+                    logging.info(f"{key}: {value}")
+
+
     # TODO Add text back into forward pass
     def forward(
         self,
@@ -893,24 +926,18 @@ class VALLE(VALLF):
                 (0, x_len + y_len),
                 value=True,
             )
-            print(f"text_attn_mask shape: {text_attn_mask.shape}")
-            print(f"text_attn_mask: {text_attn_mask}")
             # Attention mask for `x` - unmasked (i.e. model sees whole input)
             x_attn_mask = F.pad(
                 torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device),
                 (text_len, y_len),
                 value=True,
             )
-            print(f"x_attn_mask shape: {x_attn_mask.shape}")
-            print(f"x_attn_mask: {x_attn_mask}")
             # TEST combined mask instead of the above 2
             text_x_attn_mask = F.pad(
                 torch.zeros((text_len + x_len, text_len + x_len), dtype=torch.bool, device=text.device),
                 (0, y_len),
                 value=True,
             )
-            print(f"text_x_attn_mask shape: {text_x_attn_mask.shape}")
-            print(f"text and x attn mask: {text_x_attn_mask}")
             # Causal attention mask for `y` (typical speech) - upper triangular
             y_attn_mask = F.pad(
                 torch.triu(
@@ -920,13 +947,8 @@ class VALLE(VALLF):
                 (text_len + x_len, 0),
                 value=False,
             )
-            print(f"y_attn_mask shape: {y_attn_mask.shape}")
-            print(f"y attn mask: {y_attn_mask}")
             # TEST
             xy_attn_mask = torch.concat([text_x_attn_mask, y_attn_mask], dim=0)
-
-            print(f"concat attn_mask shape: {xy_attn_mask.shape}")
-            print(f"concat attn mask: {xy_attn_mask}")
 
             # xy_attn_mask = torch.concat([text_attn_mask, x_attn_mask, y_attn_mask], dim=0)
             # merge key padding and attention masks
@@ -955,8 +977,7 @@ class VALLE(VALLF):
                 (xy_pos, None),
                 mask=xy_attn_mask,
             )
-            print(f"Decoder type: {type(xy_dec)}")
-            print(f"Decoder shape: {xy_dec.shape}")
+
             # Predict the logits for the typical speech sequence
             logits = self.ar_predict_layer(xy_dec[:, text_len + x_len:]).permute(0, 2, 1)
             
@@ -964,11 +985,12 @@ class VALLE(VALLF):
             softmax_output = F.softmax(logits, dim=1)  
             predicted_indices = torch.argmax(softmax_output, dim=1) # Use argmax to get the predicted indices
 
-            # Print the predicted indices to inspect
-            print(f"predicted shape: {predicted_indices.shape}")
-            print("Predicted indices:", predicted_indices)
-            print(f"Targets shape: {targets.shape}")
-            print(f"Targets: {targets}")
+            inputs_dict = {"text": text, "x": x, "y": y}
+            masks_dict = {"text_attn_mask": text_attn_mask, "x_attn_mask": x_attn_mask, "y_attn_mask": y_attn_mask}
+            pred_targ_dict = {"predictions": predicted_indices, "targets": targets}
+
+            self.display_info(inputs_dict, masks_dict, pred_targ_dict, shapes=True, values=True, input_tensors=False, masks=False, predictions_targets=True)
+
             total_loss = F.cross_entropy(logits, targets, reduction=reduction)
             # Performs Multiclass accuracy
             # EOS is ignored because it is padded with True token
@@ -1043,24 +1065,18 @@ class VALLE(VALLF):
                 prefix_len = 0  # reset for Top10Accuracy metric
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
                 0, 2, 1
-            )
-            # print(f"X shape: {x.shape}")
-            # print(f"Y shape: {y.shape}")
-            # print(f"Logits shape: {logits.shape}")
+            )           
             softmax_output = F.softmax(logits, dim=1)
-
-            # print(f"xy shape: {xy_dec.shape}")
-            # print(f"XY_DEC: {xy_dec}")
             
             # Use argmax to get the predicted indices
             predicted_indices = torch.argmax(softmax_output, dim=1)
+            
+            inputs_dict = {"text": text, "x": x, "y": y}
+            masks_dict = {"xy_pos": xy_pos, "xy_dec": xy_dec}
+            pred_targ_dict = {"predictions": predicted_indices, "targets": targets}
 
-            # Print the predicted indices to inspect
-            # print(f"predicted shape: {predicted_indices.shape}")
-            # print("Predicted indices:", predicted_indices)
-            # print(f"Targets shape: {targets.shape}")
-            # print(f"Targets: {targets}")
-            # print(f"EOS in Targets: {(targets == NUM_AUDIO_TOKENS).sum()}")  # Count EOS tokens
+            self.display_info(inputs_dict, masks_dict, pred_targ_dict, shapes=True, values=True, input_tensors=False, masks=False, predictions_targets=True)
+
             # loss
             total_length = (y_lens).sum().type(torch.float32)
             total_loss += (
