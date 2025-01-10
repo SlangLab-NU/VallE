@@ -11,7 +11,7 @@ from .macros import (
     SPEAKER_EMBEDDING_DIM,
 )
 from .transformer import Transformer
-from .valle import VALLE, VALLF
+from .valle import VALLE
 from .visualizer import visualize
 
 
