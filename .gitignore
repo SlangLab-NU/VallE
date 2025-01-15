@@ -17,6 +17,7 @@ data/tokenized/unique_text_tokens.k2symbols
 egs/uaspeech/uaspeechForCluster.zip
 egs/libritts/*
 egs/uaspeech/aanchan_exp/*
+egs/uaspeech/bug_test_code_refactor/*
 egs/uaspeech/uaspeechTrainStage1/*
 egs/uaspeech/uaspeechTrainStage2/*
 egs/uaspeech/tensorboard_stage1/*
