@@ -28,8 +28,6 @@ from valle.modules.transformer import (
     AdaptiveLayerNorm,
     LayerNorm,
     TransformerDecoderLayer,
-    TransformerEncoder,
-    TransformerEncoderLayer,
 )
 
 from .macros import NUM_AUDIO_TOKENS, NUM_TEXT_TOKENS
@@ -58,12 +56,8 @@ class VALLE(nn.Module):
         num_layers: int,
         norm_first: bool = True,
         add_prenet: bool = False,
-        decoder_cls: Union[
-            nn.TransformerDecoder, nn.TransformerEncoder
-        ] = nn.TransformerDecoder,
-        decoder_layer_cls: Union[
-            TransformerDecoderLayer, TransformerEncoderLayer
-        ] = TransformerDecoderLayer,
+        decoder_cls: type = nn.TransformerDecoder,
+        decoder_layer_cls: type = TransformerDecoderLayer,
         prefix_mode: int = 0,
         share_embedding: bool = True,
         nar_scale_factor: float = 1.0,
