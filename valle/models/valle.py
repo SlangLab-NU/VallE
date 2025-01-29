@@ -775,7 +775,6 @@ class VALLE(nn.Module):
         text_emb = self.ar_text_position(text_emb)
 
         text_len = text_lens.max()
-        text_attn_mask = torch.zeros((text_len, text_len), dtype=torch.bool)
 
         x = audio_prompts[..., 0]
         print(f"Text shape: {text.shape}")
