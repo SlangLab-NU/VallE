@@ -16,11 +16,11 @@ egs/uaspeech/download/*
 data/tokenized/unique_text_tokens.k2symbols
 egs/uaspeech/uaspeechForCluster.zip
 egs/libritts/*
-egs/uaspeech/aanchan_exp/*
-egs/uaspeech/uaspeechTrainStage1/*
-egs/uaspeech/uaspeechTrainStage2/*
-egs/uaspeech/tensorboard_stage1/*
-egs/uaspeech/tensorboard_stage2/*
+egs/uaspeech/aanchan*
+egs/uaspeech/bug*
+egs/uaspeech/og_valle*
+egs/uaspeech/uaspeech*
+egs/uaspeech/tensorboard*
 egs/uaspeech/uaspeech/*
 egs/uaspeech/linguistic_input*
 egs/uaspeech/uaspeech_run*
@@ -33,3 +33,5 @@ egs/uaspeech/output.json
 egs/uaspeech/h5reader.py
 egs/uaspeech/atypical_speakers_testH5.json
 egs/uaspeech/audioSamples/*
+egs/uaspeech/#output_exp.log#
+egs/uaspeech/output_exp.log
