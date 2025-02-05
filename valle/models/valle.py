@@ -375,9 +375,6 @@ class VALLE(nn.Module):
         x = self.ar_text_prenet(x)
         x = self.ar_text_position(x)
 
-        if not self.training:  # Inference Mode
-            return self._inference_step(x, x_lens, y, top_k, temperature)
-
         assert y_lens.ndim == 1, y_lens.shape
         y_prompts_codes = None
         if isinstance(y, PromptedFeatures):
