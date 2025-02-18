@@ -81,7 +81,7 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
 
   mkdir -p ${audio_feats_dir}
   if [ ! -e ${audio_feats_dir}/.uaspeech.done ]; then
-    python3 bin/tokenizer.py --dataset-parts "uaspeech" --prefix "uaspeech" \
+    python3 bin/tokenizer.py --dataset-parts "uaspeech" --prefix "uaspeech" --suffix "json"\
         --audio-extractor ${audio_extractor} \
         --batch-duration 400 \
         --src-dir "data/manifests" \
@@ -91,19 +91,19 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
   # Need to split speaker test set into test/dev sets. Has to be done for each speaker
   # For now it will have hardcoded speakers, for the sake of adapting model
 
-  total_cuts_test=$(zcat ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz| wc -l)
-  mid_index_test=$((total_cuts_test / 2))
-  echo ${total_cuts_test}
-  echo ${mid_index_test}
-  # dev atypical
-  lhotse subset --last ${mid_index_test}\
-    ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
-    ${audio_feats_dir}/cuts_atypical_speakers_dev.jsonl.gz
+  # total_cuts_test=$(zcat ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz| wc -l)
+  # mid_index_test=$((total_cuts_test / 2))
+  # echo ${total_cuts_test}
+  # echo ${mid_index_test}
+  # # dev atypical
+  # lhotse subset --last ${mid_index_test}\
+  #   ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
+  #   ${audio_feats_dir}/cuts_atypical_speakers_dev.jsonl.gz
   
-  # test atypical
-  lhotse subset --first ${mid_index_test} \
-    ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
-    ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz
+  # # test atypical
+  # lhotse subset --first ${mid_index_test} \
+  #   ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
+  #   ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz
 
   touch ${audio_feats_dir}/.uaspeech.done
 

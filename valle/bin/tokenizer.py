@@ -25,6 +25,8 @@ import logging
 import os
 from pathlib import Path
 
+import itertools
+import re
 import torch
 import torch.multiprocessing
 from icefall.utils import get_executor
@@ -127,10 +129,12 @@ def main():
     # Manifest names need to include 'uaspeech_recordings_{dataset_part}' or 'uaspeech_supervision_{dataset_part}'
     elif dataset_parts == "uaspeech":
         dataset_parts = [
-            "typical_speakers_train",
-            "atypical_speakers_train",
-            "typical_speakers_test",
-            "atypical_speakers_test",
+            "typical_train",
+            "atypical_train",
+            "typical_test",
+            "atypical_test",
+            "typical_dev",
+            "atypical_dev",
         ]
     else:
         dataset_parts = dataset_parts.replace("-p", "").strip().split(" ")
@@ -168,9 +172,11 @@ def main():
 
     source_train_cuts = {}
     source_test_cuts = {}
+    source_dev_cuts = {}
     target_train_cuts = {}
     target_test_cuts = {}
-    
+    target_dev_cuts = {}
+
     def get_target_audio_path(source_audio_path, source_prefix, target_prefix):
         """
         Swaps the prefixes in the source audio path to convert it to the target audio path
@@ -232,6 +238,7 @@ def main():
         """
 
         for tgt_partition, tgt_cuts in tgt.items():
+            print(f"tgt_partition: {tgt_partition}")
             print(f" before processing: {len(tgt_cuts)}")
             tgt_speaker = get_speaker(tgt_partition)
 
@@ -302,8 +309,8 @@ def main():
                     c.supervisions[0].custom["tokens"] = {"text": phonemes}
                     phoneme_symbols.update(phonemes)
         
-        logging.info(f"Writing cutset to: {partition}")
-        cuts_filename = f"{partition}.json"
+        logging.info(f"Writing cutset to: {partition}.{args.suffix}")
+        cuts_filename = f"{partition}.{args.suffix}"
         cut_set.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
         # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
         # TODO Figure out why phonemes aren't being written to file
@@ -318,12 +325,24 @@ def main():
             unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
             unique_phonemes.to_file(unique_phonemes_file)
     
-    def process_src_tgt_cuts(src, tgt):
+
+    def remove_trailing_id_suffix(cut_id: str) -> str:
+        """
+        Removes any trailing '-#' numeric suffix from the cut ID.
+        Example:
+        - "VOUCHSAFE__B1_UW20_M3-1224" -> "VOUCHSAFE__B1_UW20_M3"
+        - "LOOK_CM10_B3_CW69_M6-244" -> "LOOK_CM10_B3_CW69_M6"
+        """
+        return re.sub(r"-\d+$", "", cut_id)
+
+
+    def process_src_tgt_cuts(src, tgt, split_type):
         """
         Extracts audio features of the source speaker and pairs it with the features of the target speaker
         and writes it to a json or jsonl.gz file
         @param: Dictionary containing source speaker utterances and audio paths
         @param: Dictionary containing target speaker utterances and audio paths
+        @param: split_type 'test', 'train', or 'dev'
         """
         
         tgt_cuts = extract_target_features(tgt)
@@ -351,16 +370,23 @@ def main():
                 src_cuts = extract_audio_features(src_cuts, src_storage_path)
                 print(f" COMPARE CUTS: {len(tgt_cuts)}, {len(src_cuts)}")
 
+                # Using itertools to repeat tgt_cuts indefinitely since we have 1 speaker 
+                tgt_cuts_cycle = itertools.cycle(tgt_cuts)
+
                 mismatch = []
                 # Assign the computed target features to the source
-                for src_cut, tgt_cut in zip(src_cuts, tgt_cuts):
-                    temp_src = src_cut.id
-                    temp_tgt = tgt_cut.id
+                for src_cut in src_cuts:
+                    tgt_cut = next(tgt_cuts_cycle)
+
+                    temp_src = remove_trailing_id_suffix(src_cut.id)
+                    temp_tgt = remove_trailing_id_suffix(tgt_cut.id)
                     
                     temp_src = temp_src.replace(get_speaker(temp_src), '')
-                    temp_tgt = temp_tgt.replace(get_speaker(temp_tgt), '')
+                    temp_tgt = temp_tgt.replace(get_speaker(temp_tgt), '')                   
                     
                     if temp_src != temp_tgt:
+                        print(f"temp src: {temp_src}")
+                        print(f"temp tgt: {temp_tgt}")
                         mismatch.append(temp_src)
                         continue
                     else:
@@ -401,7 +427,7 @@ def main():
                         c.supervisions[0].custom["tokens"] = {"text": phonemes}
                         unique_symbols.update(phonemes)
         
-            logging.info(f"Writing cutset to: {src_partition}")
+            logging.info(f"Writing cutset to: {src_partition}.{args.suffix}")
             cuts_filename = f"{src_partition}.{args.suffix}"
             src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
         # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
@@ -442,12 +468,18 @@ def main():
                         source_test_cuts[partition] = cut_set                      
                     else:
                         target_test_cuts[partition] = cut_set
+                elif "dev" in partition:
+                    if "atypical" in partition:
+                        source_dev_cuts[partition] = cut_set                      
+                    else:
+                        target_dev_cuts[partition] = cut_set
      
                     # cut.target_recording = Recording.from_file
             except Exception:
                 cut_set = m["cuts"]
-        process_src_tgt_cuts(source_train_cuts, target_train_cuts)
-        process_src_tgt_cuts(source_test_cuts, target_test_cuts)
+        process_src_tgt_cuts(source_train_cuts, target_train_cuts, 'train')
+        process_src_tgt_cuts(source_test_cuts, target_test_cuts, 'test')
+        process_src_tgt_cuts(source_dev_cuts, target_dev_cuts, 'dev')
 
         
 
