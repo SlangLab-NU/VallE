@@ -327,11 +327,11 @@ def create_many_to_one_speaker_pair(
                     a_recs, a_sups, t_recs, t_sups = process_utterances(
                         atypical_speaker, typical_speaker, atypical_filtered, typical_filtered, corpus_audio_dir, part
                     )
-
+                    # TODO Check splits here are working correctly. maybe write the test, dev codes to a txt file as a bug check
                     # Determine split based on utterance ID
                     for a_rec, a_sup, t_rec, t_sup in zip(a_recs, a_sups, t_recs, t_sups):
                         extracted_id = extract_code_from_id(a_rec.id)
-
+                        print(a_rec.id)
                         if extracted_id in test_codes:
                             split = "test"
                         elif extracted_id in dev_codes:
