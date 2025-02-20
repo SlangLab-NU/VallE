@@ -19,7 +19,7 @@ modified from lhoste.dataset.speech_synthesis.py
 """
 
 from typing import Callable, Dict, List, Sequence, Union
-
+from collections import defaultdict
 import torch
 from lhotse import validate
 from lhotse.cut import CutSet, MonoCut
@@ -92,22 +92,56 @@ class AudioToAudioDataset(torch.utils.data.Dataset):
 
         # Ensure 'target_recording' is properly converted to a Cut object
         target_audio_cuts = []
+        target_counts = defaultdict(int)  # Track occurrences of each target cut
+        seen_target_ids = set()
+
         for cut in cuts:
             target_recording = cut.custom['target_recording']
             if isinstance(target_recording, dict):
                 target_cut = MonoCut.from_dict(target_recording)
-                # print(f"Target MonoCut ID: {target_cut.id}, has_features: {target_cut.has_features}")
                 if not target_cut.has_features:
                     print(f"Features missing for target recording: {target_cut}")
-                else:
-                    target_audio_cuts.append(target_cut)
+            elif isinstance(target_recording, MonoCut):
+                target_cut = target_recording
             else:
-                target_audio_cuts.append(target_recording)
+                raise TypeError(f"Unexpected target_recording type: {type(target_recording)}")
+            
+            target_cut_id = target_cut.id
+            # Check for duplicate
+            if target_cut_id in seen_target_ids:
+                counter = 1
+                while f"{target_cut_id}_batch{counter}" in seen_target_ids:
+                    counter += 1
+                unique_tgt_id = f"{target_cut_id}_batch{counter}"
+                print(f"Unique ID collision! Generating new ID: {unique_tgt_id}")
+            else:
+                unique_tgt_id = target_cut_id
 
+            # Register the unique ID
+            seen_target_ids.add(unique_tgt_id)
+
+            # Clone target cut with a guaranteed unique ID
+            target_cut = MonoCut(
+                id=unique_tgt_id,
+                start=target_cut.start,
+                duration=target_cut.duration,
+                channel=target_cut.channel,
+                recording=target_cut.recording,
+                features=target_cut.features,
+                supervisions=target_cut.supervisions,
+                custom=target_cut.custom,
+            )
+
+            target_audio_cuts.append(target_cut)
+        
+        cut_ids = [cut.id for cut in target_audio_cuts]
+        duplicate_ids = set([x for x in cut_ids if cut_ids.count(x) > 1])
+
+        if duplicate_ids:
+            print(f"⚠️ Duplicate target IDs before creating CutSet: {duplicate_ids}")
 
         # Convert list of MonoCut to CutSet
         target_cuts = CutSet.from_cuts(target_audio_cuts)
-        # print(f"Number of target cuts: {len(target_cuts)}")
             
         # Apply the same transformations to target_cuts
         for transform in self.cut_transforms:

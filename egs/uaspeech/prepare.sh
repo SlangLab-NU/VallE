@@ -81,7 +81,7 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
 
   mkdir -p ${audio_feats_dir}
   if [ ! -e ${audio_feats_dir}/.uaspeech.done ]; then
-    python3 bin/tokenizer.py --dataset-parts "uaspeech" --prefix "uaspeech" --suffix "json"\
+    python3 bin/tokenizer.py --dataset-parts "uaspeech" --prefix "uaspeech" --suffix "jsonl.gz"\
         --audio-extractor ${audio_extractor} \
         --batch-duration 400 \
         --src-dir "data/manifests" \

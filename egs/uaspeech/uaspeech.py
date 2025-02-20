@@ -130,6 +130,12 @@ def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW':
                 dev_codes.append(f"{code}{num}")
 
     assert not set(test_codes) & set(dev_codes), "Error: Test and Dev sets have overlapping elements!"
+    
+    with open('test_dev_codes.txt', 'w') as f:
+        f.write("DEV CODES:\n")
+        f.write(', '.join(dev_codes))
+        f.write("\nTEST CODES:\n")
+        f.write(', '.join(test_codes))
 
     return test_codes, dev_codes
 

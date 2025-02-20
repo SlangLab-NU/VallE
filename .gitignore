@@ -39,3 +39,4 @@ egs/uaspeech/typical_speakers_devH5.json
 egs/uaspeech/typical_speakers_testH5.json
 egs/uaspeech/typical_speakers_trainH5.json
 egs/uaspeech/new*
+egs/uaspeech/test_dev_codes.txt

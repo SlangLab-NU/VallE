@@ -39,7 +39,7 @@ python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.5 --filter-max-
 7) copy best valid loss to epoch 2
 
 ```
-cp ${exp_dir}/best-valid-loss.pt ${exp_dir}/epoch-2.pt
+cp ${exp_dir}/best-valid-loss.pt ${exp_dir}/epoch-2.pt  # --start-epoch 3=2+1
 ```
 
 8) Train NAR Decoder
@@ -54,3 +54,7 @@ python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.5 --filter-max-
 python3 bin/infer.py --output-dir infer/demos     --checkpoint=${exp_dir}/best-valid-loss.pt     --atypical-audio /home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/CF02/CF02_B1_C1_M2.wav --text "COMMAND"
 ```
 
+10) tensorboard
+```
+tensorboard --logdir=/home/data1/vall-e.git/VallE/egs/uaspeech/(exp_dir)/tensorboard_stage1 --host localhost --port 8088
+```
