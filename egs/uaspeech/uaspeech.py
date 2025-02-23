@@ -267,8 +267,8 @@ def save_data(output_dir: Path, prefix: str, recordings: RecordingSet, supervisi
     """
     Save recordings and supervisions to the output directory.
     """
-    recordings.to_file(output_dir / f"uaspeech_recordings_{prefix}.jsonl.gz")
-    supervisions.to_file(output_dir / f"uaspeech_supervisions_{prefix}.jsonl.gz")
+    recordings.to_file(output_dir / f"uaspeech_recordings_{prefix}.json")
+    supervisions.to_file(output_dir / f"uaspeech_supervisions_{prefix}.json")
 
 
 def create_many_to_one_speaker_pair(

@@ -108,6 +108,13 @@ def get_args():
         help="The maximum number of audio seconds in a batch."
         "Determines batch size dynamically.",
     )
+    parser.add_argument(
+        "--concat-speakers",
+        type=bool,
+        default=False,
+        help="Concatenates atypical and typical speaker utterances together. This will act"
+        "as our y input into the model. Intended for TTS VALL-E",
+    )
 
     return parser.parse_args()
 
@@ -313,8 +320,6 @@ def main():
         cuts_filename = f"{partition}.{args.suffix}"
         cut_set.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
         # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
-        # TODO Figure out why phonemes aren't being written to file
-        # I think it is happening too early here.
         if args.text_extractor:
             unique_phonemes = SymbolTable()
             for s in sorted(list(phoneme_symbols)):
@@ -367,6 +372,9 @@ def main():
                     src_cuts = src_cuts.resample(24000)
                 
                  # Extract features for the source cuts
+                 # TODO Maybe add extra param to extract_audio_features here because we extract the tgts,
+                 # but if processing source, maybe I can concat the audio tokens as I write the src.h5 file??
+                 # might be easier than an additional file where I input the two .h5 files I want to concat.
                 src_cuts = extract_audio_features(src_cuts, src_storage_path)
                 print(f" COMPARE CUTS: {len(tgt_cuts)}, {len(src_cuts)}")
 
@@ -391,6 +399,16 @@ def main():
                         continue
                     else:
                         src_cut.target_recording = tgt_cut
+                    
+                    # TODO Try concat here
+                    # I don't know if I can concat the two recordings here...
+                    # I think what needs to happen is concat the .h5 inputs into a src.h5. 
+                    if args.concat_speakers:
+                        print("Concat Speaker = true")
+                        print(f"src_cut duration: {src_cut.duration}")
+                        print(f"after concat: {src_cut.duration + tgt_cut.duration}")
+                        src_cut.duration = src_cut.duration + tgt_cut.duration 
+
             if args.text_extractor:
                 print("TEXT EXTRACTOR RAN")
                 if (
