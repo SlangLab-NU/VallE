@@ -90,7 +90,7 @@ def read_mlf(file_path):
     return mlf_data_sorted
 
 
-def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW': 100}):
+def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW': 100}, seed=42):
     """
     Generates random numbers which will associate with the UASpeech utterance codes for the categories:
     {Digits, Letters, Computer Commands, Common Words, Uncommon Words}. With an 80/10/10 split the category
@@ -103,6 +103,10 @@ def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW':
     This method ensures there are no overlapping code values between test and dev.
     @return 
     """
+    
+    if seed is not None:
+        random.seed(seed)
+
     test_codes = []
     dev_codes = []
 
@@ -267,8 +271,8 @@ def save_data(output_dir: Path, prefix: str, recordings: RecordingSet, supervisi
     """
     Save recordings and supervisions to the output directory.
     """
-    recordings.to_file(output_dir / f"uaspeech_recordings_{prefix}.json")
-    supervisions.to_file(output_dir / f"uaspeech_supervisions_{prefix}.json")
+    recordings.to_file(output_dir / f"uaspeech_recordings_{prefix}.jsonl.gz")
+    supervisions.to_file(output_dir / f"uaspeech_supervisions_{prefix}.jsonl.gz")
 
 
 def create_many_to_one_speaker_pair(

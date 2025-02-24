@@ -24,7 +24,8 @@ import argparse
 import logging
 import os
 from pathlib import Path
-
+import h5py
+import numpy as np
 import itertools
 import re
 import torch
@@ -463,7 +464,6 @@ def main():
             # extract_text_phonemes(unique_symbols, src_cuts)
         # print(f"Writing file cuts_{src_partition}.jsonl.gz")
         # src_cuts.to_file(f"{args.output_dir}/cuts_{src_partition}.json")
-    
 
     with get_executor() as ex:
         for partition, m in manifests.items():
@@ -498,8 +498,6 @@ def main():
         process_src_tgt_cuts(source_train_cuts, target_train_cuts, 'train')
         process_src_tgt_cuts(source_test_cuts, target_test_cuts, 'test')
         process_src_tgt_cuts(source_dev_cuts, target_dev_cuts, 'dev')
-
-        
 
 if __name__ == "__main__":
     formatter = (
