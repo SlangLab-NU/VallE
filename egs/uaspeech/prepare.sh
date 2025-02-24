@@ -81,33 +81,30 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
 
   mkdir -p ${audio_feats_dir}
   if [ ! -e ${audio_feats_dir}/.uaspeech.done ]; then
-    python3 bin/tokenizer.py --dataset-parts "uaspeech" --prefix "uaspeech" \
+    python3 bin/tokenizer.py --dataset-parts "uaspeech" --prefix "uaspeech" --suffix "jsonl.gz"\
         --audio-extractor ${audio_extractor} \
         --batch-duration 400 \
+        --concat-speakers true\
         --src-dir "data/manifests" \
         --output-dir "${audio_feats_dir}"
   fi
 
-   # train
-  lhotse combine \
-    ${audio_feats_dir}/uaspeech_cuts_train_cerebral.jsonl.gz \
-    ${audio_feats_dir}/uaspeech_cuts_train_control.jsonl.gz \
-    ${audio_feats_dir}/cuts_train.jsonl.gz
+  # Need to split speaker test set into test/dev sets. Has to be done for each speaker
+  # For now it will have hardcoded speakers, for the sake of adapting model
+
+  # total_cuts_test=$(zcat ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz| wc -l)
+  # mid_index_test=$((total_cuts_test / 2))
+  # echo ${total_cuts_test}
+  # echo ${mid_index_test}
+  # # dev atypical
+  # lhotse subset --last ${mid_index_test}\
+  #   ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
+  #   ${audio_feats_dir}/cuts_atypical_speakers_dev.jsonl.gz
   
-  # dev
-  lhotse subset --first 400 \
-    ${audio_feats_dir}/uaspeech_cuts_test_cerebral.jsonl.gz \
-    ${audio_feats_dir}/cuts_dev.jsonl.gz
-
-  lhotse subset --first 400 \
-    ${audio_feats_dir}/uaspeech_cuts_test_control.jsonl.gz \
-    ${audio_feats_dir}/cuts_dev.jsonl.gz
-
-  # test
-  lhotse combine \
-    ${audio_feats_dir}/uaspeech_cuts_test_cerebral.jsonl.gz \
-    ${audio_feats_dir}/uaspeech_cuts_test_control.jsonl.gz \
-    ${audio_feats_dir}/cuts_test.jsonl.gz
+  # # test atypical
+  # lhotse subset --first ${mid_index_test} \
+  #   ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz \
+  #   ${audio_feats_dir}/cuts_atypical_speakers_test.jsonl.gz
 
   touch ${audio_feats_dir}/.uaspeech.done
 
