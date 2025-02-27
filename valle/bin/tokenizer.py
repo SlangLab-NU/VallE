@@ -387,11 +387,11 @@ def main():
                 for src_cut in src_cuts:
                     tgt_cut = next(tgt_cuts_cycle)
 
-                    temp_src = remove_trailing_id_suffix(src_cut.id)
-                    temp_tgt = remove_trailing_id_suffix(tgt_cut.id)
+                    temp_src_id = remove_trailing_id_suffix(src_cut.id)
+                    temp_tgt_id = remove_trailing_id_suffix(tgt_cut.id)
                     
-                    temp_src = temp_src.replace(get_speaker(temp_src), '')
-                    temp_tgt = temp_tgt.replace(get_speaker(temp_tgt), '')                   
+                    temp_src = temp_src_id.replace(get_speaker(temp_src_id), '')
+                    temp_tgt = temp_tgt_id.replace(get_speaker(temp_tgt_id), '')                   
                     
                     if temp_src != temp_tgt:
                         print(f"temp src: {temp_src}")
@@ -399,16 +399,18 @@ def main():
                         mismatch.append(temp_src)
                         continue
                     else:
+                        src_cut.id = temp_src_id
+                        tgt_cut.id = temp_tgt_id
                         src_cut.target_recording = tgt_cut
                     
                     # TODO Try concat here
                     # I don't know if I can concat the two recordings here...
                     # I think what needs to happen is concat the .h5 inputs into a src.h5. 
-                    if args.concat_speakers:
-                        print("Concat Speaker = true")
-                        print(f"src_cut duration: {src_cut.duration}")
-                        print(f"after concat: {src_cut.duration + tgt_cut.duration}")
-                        src_cut.duration = src_cut.duration + tgt_cut.duration 
+                    # if args.concat_speakers:
+                    #     print("Concat Speaker = true")
+                    #     print(f"src_cut duration: {src_cut.duration}")
+                    #     print(f"after concat: {src_cut.duration + tgt_cut.duration}")
+                    #     src_cut.duration = src_cut.duration + tgt_cut.duration 
 
             if args.text_extractor:
                 print("TEXT EXTRACTOR RAN")

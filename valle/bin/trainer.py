@@ -1128,9 +1128,33 @@ def scan_pessimistic_batches_for_oom(
     elif params.dtype in ["float16", "fp16"]:
         dtype = torch.float16
 
+    processed_batches = set()
+    
     for criterion, cuts in batches.items():
-        batch = train_dl.dataset[cuts]
+        
+        #Added this line to skip already processed batches. Issue is that on second pass the batch loses its features and am unsure why
+        cuts_identifier = frozenset(cut.id for cut in cuts)
+
+        if cuts_identifier in processed_batches:
+            print(f"Skipping already processed batch for criterion: {criterion}")
+            continue
+
+        print(f"LOADING BATCH\n{criterion}\n{cuts}")
+
+        # batch = train_dl.dataset[cuts]
         try:
+
+            batch = train_dl.dataset[cuts]
+
+            if not batch:
+                print(f"Skipping invalid or empty batch for criterion: {criterion}")
+                continue
+
+            # Log feature availability in the batch
+            has_features = all(cut.has_features for cut in cuts)
+            if not has_features:
+                logging.warning(f"Batch {criterion} contains cuts without features")
+
             with torch.cuda.amp.autocast(dtype=dtype):
                 _, loss, _ = compute_loss(
                     params=params,
@@ -1140,6 +1164,12 @@ def scan_pessimistic_batches_for_oom(
                 )
             loss.backward()
             optimizer.zero_grad()
+            processed_batches.add(cuts_identifier)
+        
+        except ValueError as e:
+            print(f"Skipping batch due to error: {e}")
+            continue
+        
         except Exception as e:
             if "CUDA out of memory" in str(e):
                 logging.error(
