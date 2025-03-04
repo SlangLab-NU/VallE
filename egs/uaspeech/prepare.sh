@@ -81,10 +81,11 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
 
   mkdir -p ${audio_feats_dir}
   if [ ! -e ${audio_feats_dir}/.uaspeech.done ]; then
-    python3 bin/tokenizer.py --dataset-parts "uaspeech" --prefix "uaspeech" --suffix "jsonl.gz"\
+    python3 bin/tokenizer.py --dataset-parts "uaspeech_tts" --prefix "uaspeech" --suffix "json"\
         --audio-extractor ${audio_extractor} \
         --batch-duration 400 \
-        --concat-speakers true\
+        --concat-speakers false\
+        --tts true\
         --src-dir "data/manifests" \
         --output-dir "${audio_feats_dir}"
   fi
@@ -110,4 +111,4 @@ if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
 
 fi
 
-python3 ./bin/display_manifest_statistics.py --manifest-dir ${audio_feats_dir}
+python3 ./bin/display_manifest_statistics.py --manifest-dir ${audio_feats_dir} --run-vc false

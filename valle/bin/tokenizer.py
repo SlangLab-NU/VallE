@@ -56,6 +56,8 @@ torch.set_num_threads(1)
 torch.set_num_interop_threads(1)
 torch.multiprocessing.set_sharing_strategy("file_system")
 
+unique_symbols = set()
+num_jobs = min(32, os.cpu_count())
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -116,8 +118,309 @@ def get_args():
         help="Concatenates atypical and typical speaker utterances together. This will act"
         "as our y input into the model. Intended for TTS VALL-E",
     )
+    parser.add_argument(
+        "--tts",
+        type=bool,
+        default=False,
+        help="Tokenizes cuts if running vall-e as a TTS model",
+    )
 
     return parser.parse_args()
+
+def get_speaker(prefix):
+    """
+    Isolates the speaker from the prefix (i.e., isolate F02 from F02_Train)
+    @param source_prefix: The prefix of the speaker (i.e., F02_train)
+    @return: String representation of the speaker
+    """
+    return prefix.split("_")[1]
+
+
+def remove_trailing_id_suffix(cut_id: str) -> str:
+    """
+    Removes any trailing '-#' numeric suffix from the cut ID.
+    Example:
+    - "VOUCHSAFE__B1_UW20_M3-1224" -> "VOUCHSAFE__B1_UW20_M3"
+    - "LOOK_CM10_B3_CW69_M6-244" -> "LOOK_CM10_B3_CW69_M6"
+    """
+    return re.sub(r"-\d+$", "", cut_id)
+    
+
+def write_text_tokens(args, unique_symbols):
+    if args.text_extractor:
+        unique_phonemes = SymbolTable()
+        for s in sorted(list(unique_symbols)):
+            print(s)
+            unique_phonemes.add(s)
+        logging.info(f"{len(unique_symbols)} unique phonemes: {unique_symbols}")
+
+        unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
+        unique_phonemes.to_file(unique_phonemes_file)
+
+
+
+def extract_text_phonemes(args, text_tokenizer, partition, phoneme_symbols, cut_set):
+    """
+    Extracts the text and phonemes for a given cutset
+    @param cut_set: The cutset to extract text and phonemes of
+    @return: no return, but writes k2 text symbols to new file
+    """
+    # cut_set = CutSet.from_manifests(
+    #             recordings=m["recordings"],
+    #             supervisions=m["supervisions"],
+    #         )
+    if args.text_extractor:
+        print("TEXT EXTRACTOR RAN")
+        if (
+            args.prefix == "baker"
+            and args.text_extractor == "labeled_pinyin"
+        ):
+            for c in tqdm(cut_set):
+                phonemes = c.supervisions[0].custom["tokens"]["text"]
+                phoneme_symbols.update(phonemes)
+        else:
+            for c in tqdm(cut_set):
+                if args.prefix == "ljspeech":
+                    text = c.supervisions[0].custom["normalized_text"]
+                    text = text.replace("”", '"').replace("“", '"')
+                    phonemes = tokenize_text(text_tokenizer, text=text)
+                elif args.prefix == "aishell":
+                    phonemes = tokenize_text(
+                        text_tokenizer, text=c.supervisions[0].text
+                    )
+                    c.supervisions[0].custom = {}
+                elif args.prefix == "uaspeech":
+                    if c.supervisions[0].text != None:
+                        phonemes = tokenize_text(
+                            text_tokenizer, text=c.supervisions[0].text
+                        )
+                        c.supervisions[0].custom = {}
+                    else:
+                        logging.info(f"Supervision empty: {c}")
+                else:
+                    assert args.prefix == "libritts"
+                    phonemes = tokenize_text(
+                        text_tokenizer, text=c.supervisions[0].text
+                    )
+                c.supervisions[0].custom["tokens"] = {"text": phonemes}
+                phoneme_symbols.update(phonemes)
+    
+    logging.info(f"Writing cutset to: {partition}.{args.suffix}")
+    cuts_filename = f"{partition}.{args.suffix}"
+    cut_set.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
+    # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
+    if args.text_extractor:
+        unique_phonemes = SymbolTable()
+        for s in sorted(list(phoneme_symbols)):
+            print(s)
+            unique_phonemes.add(s)
+        logging.info(f"{len(phoneme_symbols)} unique phonemes: {phoneme_symbols}")
+
+        unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
+        unique_phonemes.to_file(unique_phonemes_file)
+
+
+def extract_target_features(args, executor, tgt, audio_extractor):
+    """
+    Extracts the audio features for the target speaker
+    @param tgt: dictionary containing the target utterances and audio file paths.
+    @return: returns the cutset of the target with the extracted audio features
+    """
+
+    for tgt_partition, tgt_cuts in tgt.items():
+        print(f"tgt_partition: {tgt_partition}")
+        print(f" before processing: {len(tgt_cuts)}")
+        tgt_speaker = get_speaker(tgt_partition)
+
+        # AudioTokenizer
+        if args.audio_extractor:
+            print("Audio extractor called")
+            if args.audio_extractor == "Encodec":
+                tgt_storage_path = (
+                    f"{args.output_dir}/{args.prefix}_encodec_{tgt_partition}"
+                )
+            else:
+                tgt_storage_path = (
+                    f"{args.output_dir}/{args.prefix}_fbank_{tgt_partition}"
+                )
+
+            if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
+                print("Prefix check")
+                tgt_cuts = tgt_cuts.resample(24000)
+                print(f" After processing: {len(tgt_cuts)}")
+            # extract_audio_features(tgt_cuts, tgt_storage_path)
+    if tgt_cuts is None or tgt_storage_path is None:
+        raise ValueError("The audio extractor settings or the prefix did not match the expected conditions.")
+    return extract_audio_features(args, executor, tgt_cuts, tgt_storage_path, audio_extractor)
+
+
+def extract_audio_features(args, executor, speaker_cuts, storage_path, audio_extractor):
+        """
+        Uses Encoded to extract audio codes for a given speaker
+        @param speaker_cuts: the speaker cutset to extract features from
+        @param storage_path: Path where encodec features will be stored
+        @return: the updated cutset
+        """
+        with torch.no_grad():
+            initial_count = len(speaker_cuts)
+            print(f"Initial number of cuts: {initial_count}")
+            initial_ids = [cut.id for cut in speaker_cuts]
+            if torch.cuda.is_available() and args.audio_extractor == "Encodec":
+                speaker_cuts = speaker_cuts.compute_and_store_features_batch(
+                    extractor=audio_extractor,
+                    storage_path=storage_path,
+                    num_workers=num_jobs,
+                    batch_duration=args.batch_duration,
+                    collate=False,
+                    overwrite=True,
+                    storage_type=NumpyHdf5Writer,
+                )
+            else:
+                speaker_cuts = speaker_cuts.compute_and_store_features(
+                    extractor=audio_extractor,
+                    storage_path=storage_path,
+                    num_jobs=num_jobs if executor is None else 64,
+                    executor=executor,
+                    storage_type=NumpyHdf5Writer,
+                )
+            final_count = len(speaker_cuts)
+            final_ids = [cut.id for cut in speaker_cuts]
+            print(f"Final number of cuts after feature extraction: {final_count}")
+            print(f"Missing cut IDs: {set(initial_ids) - set(final_ids)}")
+        return speaker_cuts
+
+
+def process_cuts(args, src_cuts, sample_rate, partition):
+    """
+    Sets the storage path and sets the source cuts to a given sampling rate
+    @param args: The tokenizer arguments
+    @param src_cuts: Dictionary containing source speaker utterances and audio paths
+    @param sample_rate: The sampling rate to set the cuts to
+    @param partition: A string indicating the partition i.e. test, dev, or train 
+    """
+    if args.audio_extractor == "Encodec":
+        src_storage_path = (
+            f"{args.output_dir}/{args.prefix}_encodec_{partition}"
+        )
+    else:
+        src_storage_path = (
+            f"{args.output_dir}/{args.prefix}_fbank_{partition}"
+        )
+
+    if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
+        src_cuts = src_cuts.resample(sample_rate)
+    
+    return src_storage_path, src_cuts
+
+
+def extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer):
+    print("TEXT EXTRACTOR RAN")
+    if (
+        args.prefix == "baker"
+        and args.text_extractor == "labeled_pinyin"
+    ):
+        for c in tqdm(src_cuts):
+            phonemes = c.supervisions[0].custom["tokens"]["text"]
+            unique_symbols.update(phonemes)
+    else:
+        for c in tqdm(src_cuts):
+            if args.prefix == "ljspeech":
+                text = c.supervisions[0].custom["normalized_text"]
+                text = text.replace("”", '"').replace("“", '"')
+                phonemes = tokenize_text(text_tokenizer, text=text)
+            elif args.prefix == "aishell":
+                phonemes = tokenize_text(
+                    text_tokenizer, text=c.supervisions[0].text
+                )
+                c.supervisions[0].custom = {}
+            elif args.prefix == "uaspeech":
+                if c.supervisions[0].text != None:
+                    phonemes = tokenize_text(
+                        text_tokenizer, text=c.supervisions[0].text
+                    )
+                    c.supervisions[0].custom = {}
+                else:
+                    logging.info(f"Supervision empty: {c}")
+            else:
+                assert args.prefix == "libritts"
+                phonemes = tokenize_text(
+                    text_tokenizer, text=c.supervisions[0].text
+                )
+            c.supervisions[0].custom["tokens"] = {"text": phonemes}
+            unique_symbols.update(phonemes)
+
+
+def process_base_tts(args, executor, partition, cuts, text_tokenizer, audio_extractor):
+    """
+    """
+    if args.audio_extractor:
+        storage_path, cuts = process_cuts(args, cuts, 24000, partition)
+        src_cuts = extract_audio_features(args, executor, cuts, storage_path, audio_extractor)
+    if args.text_extractor:
+        extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer)
+    
+        logging.info(f"Writing cutset to: {partition}.{args.suffix}")
+        cuts_filename = f"{partition}.{args.suffix}"
+        src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
+    
+    write_text_tokens(args, unique_symbols)
+
+
+def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extractor):
+    """
+    Extracts audio features of the source speaker and pairs it with the features of the target speaker
+    and writes it to a json or jsonl.gz file
+    @param src: Dictionary containing source speaker utterances and audio paths
+    @param tgt: Dictionary containing target speaker utterances and audio paths
+    """
+    
+    tgt_cuts = extract_target_features(args, executor, tgt, audio_extractor)
+    
+    for src_partition, src_cuts in src.items():
+        src_speaker = get_speaker(src_partition)
+
+        tgt_speaker = get_speaker(next(iter(tgt)))
+
+        # AudioTokenizer
+        if args.audio_extractor:
+            
+            src_storage_path, src_cuts = process_cuts(args, src_cuts, 24000, src_partition)
+            src_cuts = extract_audio_features(args, executor, src_cuts, src_storage_path, audio_extractor)
+
+            print(f" COMPARE CUTS: {len(tgt_cuts)}, {len(src_cuts)}")
+
+            # Using itertools to repeat tgt_cuts indefinitely since we have 1 speaker 
+            tgt_cuts_cycle = itertools.cycle(tgt_cuts)
+
+            mismatch = []
+            # Assign the computed target features to the source
+            for src_cut in src_cuts:
+                tgt_cut = next(tgt_cuts_cycle)
+
+                temp_src_id = remove_trailing_id_suffix(src_cut.id)
+                temp_tgt_id = remove_trailing_id_suffix(tgt_cut.id)
+                
+                temp_src = temp_src_id.replace(get_speaker(temp_src_id), '')
+                temp_tgt = temp_tgt_id.replace(get_speaker(temp_tgt_id), '')                   
+                
+                if temp_src != temp_tgt:
+                    print(f"temp src: {temp_src}")
+                    print(f"temp tgt: {temp_tgt}")
+                    mismatch.append(temp_src)
+                    continue
+                else:
+                    src_cut.id = temp_src_id
+                    tgt_cut.id = temp_tgt_id
+                    src_cut.target_recording = tgt_cut
+
+        if args.text_extractor:
+            extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer)
+    
+        logging.info(f"Writing cutset to: {src_partition}.{args.suffix}")
+        cuts_filename = f"{src_partition}.{args.suffix}"
+        src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
+    
+    write_text_tokens(args, unique_symbols)
 
 
 def main():
@@ -135,7 +438,13 @@ def main():
             "train-other-500",
         ]
     # Manifest names need to include 'uaspeech_recordings_{dataset_part}' or 'uaspeech_supervision_{dataset_part}'
-    elif dataset_parts == "uaspeech":
+    elif dataset_parts == "uaspeech_tts":
+        dataset_parts = [
+            "train",
+            "test",
+            "dev",
+        ]
+    elif dataset_parts == "uaspeech_vc":
         dataset_parts = [
             "typical_train",
             "atypical_train",
@@ -170,302 +479,15 @@ def main():
             audio_extractor = get_fbank_extractor()
 
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
-    unique_symbols = set()
-    num_jobs = min(32, os.cpu_count())
+    
     logging.info(f"dataset_parts: {dataset_parts} manifests {len(manifests)}")
 
     prefix = args.prefix
     if prefix and not prefix.endswith("_"):
         prefix = f"{prefix}_"
 
-    source_train_cuts = {}
-    source_test_cuts = {}
-    source_dev_cuts = {}
-    target_train_cuts = {}
-    target_test_cuts = {}
-    target_dev_cuts = {}
-
-    def get_target_audio_path(source_audio_path, source_prefix, target_prefix):
-        """
-        Swaps the prefixes in the source audio path to convert it to the target audio path
-        @param source_audio_path: The path to the source audio
-        @param source_prefix: The prefix of the source speaker i.e., F02_train
-        @param target_prefix: The prefix of the target speaker i.e., CF02_train
-        @return: target audio path
-        """
-        return source_audio_path.replace(source_prefix, target_prefix)
-
-    def get_speaker(prefix):
-        """
-        Isolates the speaker from the prefix (i.e., isolate F02 from F02_Train)
-        @param source_prefix: The prefix of the speaker (i.e., F02_train)
-        @return: String representation of the speaker
-        """
-        return prefix.split("_")[1]
-    
-    def extract_audio_features(speaker_cuts, storage_path):
-        """
-        Uses Encoded to extract audio codes for a given speaker
-        @param speaker_cuts: the speaker cutset to extract features from
-        @param storage_path: Path where encodec features will be stored
-        @return: the updated cutset
-        """
-        with torch.no_grad():
-            initial_count = len(speaker_cuts)
-            print(f"Initial number of cuts: {initial_count}")
-            initial_ids = [cut.id for cut in speaker_cuts]
-            if torch.cuda.is_available() and args.audio_extractor == "Encodec":
-                speaker_cuts = speaker_cuts.compute_and_store_features_batch(
-                    extractor=audio_extractor,
-                    storage_path=storage_path,
-                    num_workers=num_jobs,
-                    batch_duration=args.batch_duration,
-                    collate=False,
-                    overwrite=True,
-                    storage_type=NumpyHdf5Writer,
-                )
-            else:
-                speaker_cuts = speaker_cuts.compute_and_store_features(
-                    extractor=audio_extractor,
-                    storage_path=storage_path,
-                    num_jobs=num_jobs if ex is None else 64,
-                    executor=ex,
-                    storage_type=NumpyHdf5Writer,
-                )
-            final_count = len(speaker_cuts)
-            final_ids = [cut.id for cut in speaker_cuts]
-            print(f"Final number of cuts after feature extraction: {final_count}")
-            print(f"Missing cut IDs: {set(initial_ids) - set(final_ids)}")
-        return speaker_cuts
-
-    def extract_target_features(tgt):
-        """
-        Extracts the audio features for the target speaker
-        @param tgt: dictionary containing the target utterances and audio file paths.
-        @return: returns the cutset of the target with the extracted audio features
-        """
-
-        for tgt_partition, tgt_cuts in tgt.items():
-            print(f"tgt_partition: {tgt_partition}")
-            print(f" before processing: {len(tgt_cuts)}")
-            tgt_speaker = get_speaker(tgt_partition)
-
-            # AudioTokenizer
-            if args.audio_extractor:
-                print("Audio extractor called")
-                if args.audio_extractor == "Encodec":
-                    tgt_storage_path = (
-                        f"{args.output_dir}/{args.prefix}_encodec_{tgt_partition}"
-                    )
-                else:
-                    tgt_storage_path = (
-                        f"{args.output_dir}/{args.prefix}_fbank_{tgt_partition}"
-                    )
-
-                if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
-                    print("Prefix check")
-                    tgt_cuts = tgt_cuts.resample(24000)
-                    print(f" After processing: {len(tgt_cuts)}")
-                # extract_audio_features(tgt_cuts, tgt_storage_path)
-        if tgt_cuts is None or tgt_storage_path is None:
-            raise ValueError("The audio extractor settings or the prefix did not match the expected conditions.")
-        return extract_audio_features(tgt_cuts, tgt_storage_path)
-
-    def extract_text_phonemes(phoneme_symbols, cut_set):
-        """
-        Extracts the text and phonemes for a given cutset
-        @param cut_set: The cutset to extract text and phonemes of
-        @return: no return, but writes k2 text symbols to new file
-        """
-        # cut_set = CutSet.from_manifests(
-        #             recordings=m["recordings"],
-        #             supervisions=m["supervisions"],
-        #         )
-        if args.text_extractor:
-            print("TEXT EXTRACTOR RAN")
-            if (
-                args.prefix == "baker"
-                and args.text_extractor == "labeled_pinyin"
-            ):
-                for c in tqdm(cut_set):
-                    phonemes = c.supervisions[0].custom["tokens"]["text"]
-                    phoneme_symbols.update(phonemes)
-            else:
-                for c in tqdm(cut_set):
-                    if args.prefix == "ljspeech":
-                        text = c.supervisions[0].custom["normalized_text"]
-                        text = text.replace("”", '"').replace("“", '"')
-                        phonemes = tokenize_text(text_tokenizer, text=text)
-                    elif args.prefix == "aishell":
-                        phonemes = tokenize_text(
-                            text_tokenizer, text=c.supervisions[0].text
-                        )
-                        c.supervisions[0].custom = {}
-                    elif args.prefix == "uaspeech":
-                        if c.supervisions[0].text != None:
-                            phonemes = tokenize_text(
-                                text_tokenizer, text=c.supervisions[0].text
-                            )
-                            c.supervisions[0].custom = {}
-                        else:
-                            logging.info(f"Supervision empty: {c}")
-                    else:
-                        assert args.prefix == "libritts"
-                        phonemes = tokenize_text(
-                            text_tokenizer, text=c.supervisions[0].text
-                        )
-                    c.supervisions[0].custom["tokens"] = {"text": phonemes}
-                    phoneme_symbols.update(phonemes)
-        
-        logging.info(f"Writing cutset to: {partition}.{args.suffix}")
-        cuts_filename = f"{partition}.{args.suffix}"
-        cut_set.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
-        # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
-        if args.text_extractor:
-            unique_phonemes = SymbolTable()
-            for s in sorted(list(phoneme_symbols)):
-                print(s)
-                unique_phonemes.add(s)
-            logging.info(f"{len(phoneme_symbols)} unique phonemes: {phoneme_symbols}")
-
-            unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
-            unique_phonemes.to_file(unique_phonemes_file)
-    
-
-    def remove_trailing_id_suffix(cut_id: str) -> str:
-        """
-        Removes any trailing '-#' numeric suffix from the cut ID.
-        Example:
-        - "VOUCHSAFE__B1_UW20_M3-1224" -> "VOUCHSAFE__B1_UW20_M3"
-        - "LOOK_CM10_B3_CW69_M6-244" -> "LOOK_CM10_B3_CW69_M6"
-        """
-        return re.sub(r"-\d+$", "", cut_id)
-
-
-    def process_src_tgt_cuts(src, tgt, split_type):
-        """
-        Extracts audio features of the source speaker and pairs it with the features of the target speaker
-        and writes it to a json or jsonl.gz file
-        @param: Dictionary containing source speaker utterances and audio paths
-        @param: Dictionary containing target speaker utterances and audio paths
-        @param: split_type 'test', 'train', or 'dev'
-        """
-        
-        tgt_cuts = extract_target_features(tgt)
-        
-        for src_partition, src_cuts in src.items():
-            src_speaker = get_speaker(src_partition)
-
-            tgt_speaker = get_speaker(next(iter(tgt)))
-
-            # AudioTokenizer
-            if args.audio_extractor:
-                if args.audio_extractor == "Encodec":
-                    src_storage_path = (
-                        f"{args.output_dir}/{args.prefix}_encodec_{src_partition}"
-                    )
-                else:
-                    src_storage_path = (
-                        f"{args.output_dir}/{args.prefix}_fbank_{src_partition}"
-                    )
-
-                if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
-                    src_cuts = src_cuts.resample(24000)
-                
-                 # Extract features for the source cuts
-                 # TODO Maybe add extra param to extract_audio_features here because we extract the tgts,
-                 # but if processing source, maybe I can concat the audio tokens as I write the src.h5 file??
-                 # might be easier than an additional file where I input the two .h5 files I want to concat.
-                src_cuts = extract_audio_features(src_cuts, src_storage_path)
-                print(f" COMPARE CUTS: {len(tgt_cuts)}, {len(src_cuts)}")
-
-                # Using itertools to repeat tgt_cuts indefinitely since we have 1 speaker 
-                tgt_cuts_cycle = itertools.cycle(tgt_cuts)
-
-                mismatch = []
-                # Assign the computed target features to the source
-                for src_cut in src_cuts:
-                    tgt_cut = next(tgt_cuts_cycle)
-
-                    temp_src_id = remove_trailing_id_suffix(src_cut.id)
-                    temp_tgt_id = remove_trailing_id_suffix(tgt_cut.id)
-                    
-                    temp_src = temp_src_id.replace(get_speaker(temp_src_id), '')
-                    temp_tgt = temp_tgt_id.replace(get_speaker(temp_tgt_id), '')                   
-                    
-                    if temp_src != temp_tgt:
-                        print(f"temp src: {temp_src}")
-                        print(f"temp tgt: {temp_tgt}")
-                        mismatch.append(temp_src)
-                        continue
-                    else:
-                        src_cut.id = temp_src_id
-                        tgt_cut.id = temp_tgt_id
-                        src_cut.target_recording = tgt_cut
-                    
-                    # TODO Try concat here
-                    # I don't know if I can concat the two recordings here...
-                    # I think what needs to happen is concat the .h5 inputs into a src.h5. 
-                    # if args.concat_speakers:
-                    #     print("Concat Speaker = true")
-                    #     print(f"src_cut duration: {src_cut.duration}")
-                    #     print(f"after concat: {src_cut.duration + tgt_cut.duration}")
-                    #     src_cut.duration = src_cut.duration + tgt_cut.duration 
-
-            if args.text_extractor:
-                print("TEXT EXTRACTOR RAN")
-                if (
-                    args.prefix == "baker"
-                    and args.text_extractor == "labeled_pinyin"
-                ):
-                    for c in tqdm(src_cuts):
-                        phonemes = c.supervisions[0].custom["tokens"]["text"]
-                        unique_symbols.update(phonemes)
-                else:
-                    for c in tqdm(src_cuts):
-                        if args.prefix == "ljspeech":
-                            text = c.supervisions[0].custom["normalized_text"]
-                            text = text.replace("”", '"').replace("“", '"')
-                            phonemes = tokenize_text(text_tokenizer, text=text)
-                        elif args.prefix == "aishell":
-                            phonemes = tokenize_text(
-                                text_tokenizer, text=c.supervisions[0].text
-                            )
-                            c.supervisions[0].custom = {}
-                        elif args.prefix == "uaspeech":
-                            if c.supervisions[0].text != None:
-                                phonemes = tokenize_text(
-                                    text_tokenizer, text=c.supervisions[0].text
-                                )
-                                c.supervisions[0].custom = {}
-                            else:
-                                logging.info(f"Supervision empty: {c}")
-                        else:
-                            assert args.prefix == "libritts"
-                            phonemes = tokenize_text(
-                                text_tokenizer, text=c.supervisions[0].text
-                            )
-                        c.supervisions[0].custom["tokens"] = {"text": phonemes}
-                        unique_symbols.update(phonemes)
-        
-            logging.info(f"Writing cutset to: {src_partition}.{args.suffix}")
-            cuts_filename = f"{src_partition}.{args.suffix}"
-            src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
-        # cut_set.to_file(f"{args.output_dir}/{cuts_filename}")
-        # TODO Figure out why phonemes aren't being written to file
-        # I think it is happening too early here.
-        if args.text_extractor:
-            unique_phonemes = SymbolTable()
-            for s in sorted(list(unique_symbols)):
-                print(s)
-                unique_phonemes.add(s)
-            logging.info(f"{len(unique_symbols)} unique phonemes: {unique_symbols}")
-
-            unique_phonemes_file = f"{args.output_dir}/unique_text_tokens.k2symbols"
-            unique_phonemes.to_file(unique_phonemes_file)
-            # extract_text_phonemes(unique_symbols, src_cuts)
-        # print(f"Writing file cuts_{src_partition}.jsonl.gz")
-        # src_cuts.to_file(f"{args.output_dir}/cuts_{src_partition}.json")
+    source_train_cuts, source_test_cuts, source_dev_cuts = {}, {}, {}
+    target_train_cuts, target_test_cuts, target_dev_cuts = {}, {}, {}
 
     with get_executor() as ex:
         for partition, m in manifests.items():
@@ -478,28 +500,32 @@ def main():
                     recordings=m["recordings"],
                     supervisions=m["supervisions"],
                 )
-                if "train" in partition:
-                    if "atypical" in partition:
-                        source_train_cuts[partition] = cut_set                        
-                    else:
-                        target_train_cuts[partition] = cut_set
-                elif "test" in partition:
-                    if "atypical" in partition:
-                        source_test_cuts[partition] = cut_set                      
-                    else:
-                        target_test_cuts[partition] = cut_set
-                elif "dev" in partition:
-                    if "atypical" in partition:
-                        source_dev_cuts[partition] = cut_set                      
-                    else:
-                        target_dev_cuts[partition] = cut_set
-     
+                if not args.tts:
+                    if "train" in partition:
+                        if "atypical" in partition:
+                            source_train_cuts[partition] = cut_set                        
+                        else:
+                            target_train_cuts[partition] = cut_set
+                    elif "test" in partition:
+                        if "atypical" in partition:
+                            source_test_cuts[partition] = cut_set                      
+                        else:
+                            target_test_cuts[partition] = cut_set
+                    elif "dev" in partition:
+                        if "atypical" in partition:
+                            source_dev_cuts[partition] = cut_set                      
+                        else:
+                            target_dev_cuts[partition] = cut_set    
                     # cut.target_recording = Recording.from_file
             except Exception:
                 cut_set = m["cuts"]
-        process_src_tgt_cuts(source_train_cuts, target_train_cuts, 'train')
-        process_src_tgt_cuts(source_test_cuts, target_test_cuts, 'test')
-        process_src_tgt_cuts(source_dev_cuts, target_dev_cuts, 'dev')
+            if args.tts:
+                process_base_tts(args, partition=partition, executor=ex, cuts=cut_set, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
+        if not args.tts:
+            process_src_tgt_cuts(args, executor=ex, src=source_train_cuts, tgt=target_train_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
+            process_src_tgt_cuts(args, executor=ex, src=source_test_cuts, tgt=target_test_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
+            process_src_tgt_cuts(args, executor=ex, src=source_dev_cuts, tgt=target_dev_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
+            
 
 if __name__ == "__main__":
     formatter = (

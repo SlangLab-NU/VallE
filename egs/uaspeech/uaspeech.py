@@ -271,9 +271,109 @@ def save_data(output_dir: Path, prefix: str, recordings: RecordingSet, supervisi
     """
     Save recordings and supervisions to the output directory.
     """
-    recordings.to_file(output_dir / f"uaspeech_recordings_{prefix}.jsonl.gz")
-    supervisions.to_file(output_dir / f"uaspeech_supervisions_{prefix}.jsonl.gz")
+    recordings.to_file(output_dir / f"uaspeech_recordings_{prefix}.json")
+    supervisions.to_file(output_dir / f"uaspeech_supervisions_{prefix}.json")
 
+
+def check_dataset_parts(corpus_audio_dir, dataset_parts):
+    """
+    Validates the dataset parts within the uaspeech corpus i.e. normalized, noise reduced, etc.
+    """
+    if dataset_parts == "auto":
+        dataset_parts = set(UASPEECH_FULL).intersection(path.name for path in corpus_audio_dir.glob("*"))
+        if not dataset_parts:
+            raise ValueError(f"Could not find any UASpeech dataset parts in: {corpus_audio_dir}")
+    elif isinstance(dataset_parts, str):
+        dataset_parts = [dataset_parts]
+
+    logger.info(f"dataset_parts: {dataset_parts}")
+
+    return dataset_parts
+
+
+def verify_corpus_dir(corpus_dir, alignments_dir):
+    """
+    Validates the corpus directory
+    """   
+    corpus_dir = Path(corpus_dir)
+    corpus_audio_dir = Path(os.path.join(corpus_dir, "audio"))
+    alignments_dir = Path(alignments_dir) if alignments_dir is not None else corpus_audio_dir
+    assert corpus_audio_dir.is_dir(), f"No such directory: {corpus_audio_dir}"
+
+    return corpus_audio_dir
+
+
+def prep_base_tts(
+    corpus_dir: Pathlike,
+    speakers: List[str],
+    alignments_dir: Optional[Pathlike] = None,
+    dataset_parts: Union[str, Sequence[str]] = "auto",
+    output_dir: Optional[Pathlike] = None,
+    num_jobs: int = 1,
+) -> Dict[str, Dict[str, Union[RecordingSet, SupervisionSet]]]:
+    
+    corpus_audio_dir = verify_corpus_dir(corpus_dir, alignments_dir)
+    dataset_parts = check_dataset_parts(corpus_audio_dir, dataset_parts)
+
+    if output_dir is not None:
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    metadata_mlf_path = os.path.join(corpus_dir, "mlf")
+
+    # retrieve unique codes for the test and dev sets
+    test_codes, dev_codes = generate_test_dev_utterances() 
+
+    # Dynamically create storage for train, test, and dev sets
+    splits = ["train", "test", "dev"]
+    recording_sets = {f"recording_{split}_set": [] for split in splits}
+    supervision_sets = {f"supervision_{split}_set": [] for split in splits}
+
+    with ThreadPoolExecutor(num_jobs) as ex:
+        for part in tqdm(dataset_parts, desc="Dataset parts"):
+            if not part.startswith("."):
+                logging.info(f"Processing UASpeech subset: {part}")
+
+                for speaker in tqdm(speakers, desc="Processing Speakers"):
+                    utterances = load_speaker_utterances(metadata_mlf_path, speaker)
+                    for utterance_id, word in tqdm(utterances.items(), desc="Processing Utterances"):
+                        try:
+                            recording_id = f"{word}_{utterance_id}"                       
+                            audio_path = corpus_audio_dir / part / speaker / f"{utterance_id}.wav"                            
+                            recording = Recording.from_file(audio_path, recording_id)
+
+                            segment = SupervisionSegment(
+                                id=recording_id,
+                                recording_id=recording_id,
+                                start=0.0,
+                                duration=recording.duration,
+                                language="English",
+                                speaker=utterance_id,
+                                text=word
+                            )
+
+                            extracted_id = extract_code_from_id(recording.id)
+                            
+                            if extracted_id in test_codes:
+                                split = "test"
+                            elif extracted_id in dev_codes:
+                                split = "dev"
+                            else:
+                                split = "train"
+
+                            # Store in correct set
+                            recording_sets[f"recording_{split}_set"].append(recording)
+                            supervision_sets[f"supervision_{split}_set"].append(segment)
+                        
+                        except Exception as err:
+                            logger.error(err)
+    # Save data for all splits
+    if output_dir is not None:
+        for split in splits:
+            save_data(output_dir, f"{split}", 
+                      RecordingSet.from_recordings(recording_sets[f"recording_{split}_set"]),
+                      SupervisionSet.from_segments(supervision_sets[f"supervision_{split}_set"]))
+                                      
 
 def create_many_to_one_speaker_pair(
     corpus_dir: Pathlike,
@@ -284,19 +384,9 @@ def create_many_to_one_speaker_pair(
     output_dir: Optional[Pathlike] = None,
     num_jobs: int = 1,
 ) -> Dict[str, Dict[str, Union[RecordingSet, SupervisionSet]]]:
-    corpus_dir = Path(corpus_dir)
-    corpus_audio_dir = Path(os.path.join(corpus_dir, "audio"))
-    alignments_dir = Path(alignments_dir) if alignments_dir is not None else corpus_audio_dir
-    assert corpus_audio_dir.is_dir(), f"No such directory: {corpus_audio_dir}"
-
-    if dataset_parts == "auto":
-        dataset_parts = set(UASPEECH_FULL).intersection(path.name for path in corpus_audio_dir.glob("*"))
-        if not dataset_parts:
-            raise ValueError(f"Could not find any UASpeech dataset parts in: {corpus_audio_dir}")
-    elif isinstance(dataset_parts, str):
-        dataset_parts = [dataset_parts]
-
-    logger.info(f"dataset_parts: {dataset_parts}")
+    
+    corpus_audio_dir = verify_corpus_dir(corpus_dir, alignments_dir)
+    dataset_parts = check_dataset_parts(corpus_audio_dir, dataset_parts)
 
     if output_dir is not None:
         output_dir = Path(output_dir)
@@ -337,7 +427,6 @@ def create_many_to_one_speaker_pair(
                     a_recs, a_sups, t_recs, t_sups = process_utterances(
                         atypical_speaker, typical_speaker, atypical_filtered, typical_filtered, corpus_audio_dir, part
                     )
-                    # TODO Check splits here are working correctly. maybe write the test, dev codes to a txt file as a bug check
                     # Determine split based on utterance ID
                     for a_rec, a_sup, t_rec, t_sup in zip(a_recs, a_sups, t_recs, t_sups):
                         extracted_id = extract_code_from_id(a_rec.id)
@@ -564,33 +653,16 @@ def create_speaker_speaker_pair(
 # extract_mlf_information(typical, PATH)
 
 # Issues with CMO9 and feature extraction
-# control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
+control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
 # atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
 
-control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
+# control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
 atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
 atypical_speakers = ["CM05"]
 
 # create_speaker_speaker_pair(UASPEECH_PATH, control_speakers, atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
+prep_base_tts(UASPEECH_PATH, control_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
 
-create_many_to_one_speaker_pair(UASPEECH_PATH, "CM05", atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
+# create_many_to_one_speaker_pair(UASPEECH_PATH, "CM05", atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
 
-    
-# sets = create_speaker_speaker_pair(UASPEECH_PATH, "CF02", "F02", None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
-# typical_train = sets["typical_train_recordings"]
-# atypical_train = sets["atypical_train_recordings"]
-# typical_test = sets["typical_test_recordings"]
-# atypical_test = sets["atypical_test_recordings"]
-
-# print(f"Typical train length {len(typical_train)}")
-# print(f"Atypical train length {len(atypical_train)}")
-# print(f"Typical test length {len(typical_test)}")
-# print(f"Atypical test length {len(atypical_test)}")
-
-
-# sets = prepare_uaspeech(UASPEECH_PATH, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
-# train_cerebral = sets["train_supervisions_cerebral"]
-
-# for element in train_cerebral:
-#     print(element)
 ############################################################################################

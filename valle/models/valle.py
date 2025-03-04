@@ -13,7 +13,7 @@
 # limitations under the License.
 
 import random
-from typing import Dict, Iterator, List, Tuple, Union
+from typing import Dict, Iterator, List, Tuple, Union, Optional
 
 import torch
 import torch.nn as nn
@@ -767,6 +767,8 @@ class VALLE(VALLF):
         y_lens: Union[torch.Tensor, PromptedFeatures],
         reduction: str = "sum",
         train_stage: int = 0,
+        many_to_one: bool = True,
+        atypical_audio_lens: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
         """
@@ -804,6 +806,22 @@ class VALLE(VALLF):
         x_mask = make_pad_mask(x_lens).to(x.device)
         y_mask = make_pad_mask(y_lens).to(y.device)
         y_mask_int = y_mask.type(torch.int64)
+
+        if many_to_one:
+            # Hybrid Causal/Non-Causal Masking for `y`
+            seq_len = y.shape[1]  # Total length of y (both atypical + typical speech)
+            batch_size = y.shape[0]
+            # Initialize a non-causal mask (default: full visibility)
+            hybrid_mask = torch.ones((batch_size, seq_len), dtype=torch.bool, device=y.device)
+
+            # Create causal masks per sample
+            for i in range(batch_size):
+                typical_start = atypical_audio_lens[i]  # Start index of typical speech
+                typical_length = seq_len - typical_start  # Length of typical speech
+                hybrid_mask[i, typical_start:] = torch.arange(typical_length, device=y.device) >= 0
+
+            # Apply Hybrid Mask
+            y_mask_int = hybrid_mask.type(torch.int64)
 
         text = x
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
@@ -847,6 +865,7 @@ class VALLE(VALLF):
                 (x_len, 0),
                 value=False,
             )
+            print(f"Y ATTN MASK: {y_attn_mask}")
             xy_attn_mask = torch.concat([x_attn_mask, y_attn_mask], dim=0)
 
             # merge key padding and attention masks

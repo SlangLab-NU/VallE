@@ -272,6 +272,13 @@ def get_parser():
         help="perform OOM check on dataloader batches before starting training.",
     )
 
+    parser.add_argument(
+        "--voice-conversion",
+        type=str2bool,
+        default=True,
+        help="Indicate if you want to train VALL-E as a TTS or VC",
+    )
+
     add_model_arguments(parser)
 
     return parser
@@ -521,14 +528,28 @@ def compute_loss(
     audio_features_lens = batch["audio_features_lens"].to(device)
     assert audio_features.ndim == 3
 
-    with torch.set_grad_enabled(is_training):
-        predicts, loss, metrics = model(
-            x=text_tokens,
-            x_lens=text_tokens_lens,
-            y=audio_features,
-            y_lens=audio_features_lens,
-            train_stage=params.train_stage,
-        )
+    if params.voice_conversion:
+        atypical_features_lens = batch["atypical_audio_features_lens"].to(device)
+
+        with torch.set_grad_enabled(is_training):
+            predicts, loss, metrics = model(
+                x=text_tokens,
+                x_lens=text_tokens_lens,
+                atypical_audio_lens=atypical_features_lens,
+                y=audio_features,
+                y_lens=audio_features_lens,
+                train_stage=params.train_stage,
+            )
+    else:
+        with torch.set_grad_enabled(is_training):
+            predicts, loss, metrics = model(
+                x=text_tokens,
+                x_lens=text_tokens_lens,
+                y=audio_features,
+                y_lens=audio_features_lens,
+                train_stage=params.train_stage,
+                many_to_one=False
+            )
 
     assert loss.requires_grad == is_training
 

@@ -36,6 +36,12 @@ def get_args():
         default=Path("data/tokenized"),
         help="Path to the tokenized manifests.",
     )
+    parser.add_argument(
+        "--run-vc",
+        type=bool,
+        default=False,
+        help="If true, will load the atypical/typical cuts",
+    )
     return parser.parse_args()
 
 
@@ -44,7 +50,10 @@ def main():
     manifest_dir = args.manifest_dir or Path("data/tokenized")
     for part in ["train", "dev", "test"]:
         print(f"##  {part}")
-        cuts = load_manifest_lazy(manifest_dir / f"cuts_atypical_{part}.jsonl.gz")
+        if not args.run_vc:
+            cuts = load_manifest_lazy(manifest_dir / f"cuts_atypical_{part}.jsonl.gz")
+        else:
+            cuts = load_manifest_lazy(manifest_dir / f"cuts_{part}.jsonl.gz")
         cuts.describe()
         print("\n")
 
