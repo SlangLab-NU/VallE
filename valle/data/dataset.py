@@ -75,7 +75,7 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
     def __getitem__(self, cuts: CutSet) -> Dict[str, torch.Tensor]:
         
         validate_for_tts(cuts)
-        print(f"CUTS: {cuts}")
+        
         for transform in self.cut_transforms:
             cuts = transform(cuts)
         audio, audio_lens = None, None

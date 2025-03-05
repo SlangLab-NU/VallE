@@ -865,7 +865,6 @@ class VALLE(VALLF):
                 (x_len, 0),
                 value=False,
             )
-            print(f"Y ATTN MASK: {y_attn_mask}")
             xy_attn_mask = torch.concat([x_attn_mask, y_attn_mask], dim=0)
 
             # merge key padding and attention masks
