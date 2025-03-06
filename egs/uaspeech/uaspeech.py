@@ -6,6 +6,7 @@ import shutil
 import tarfile
 import zipfile
 import os
+import argparse
 from concurrent.futures.thread import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple, Union
@@ -24,7 +25,7 @@ UASPEECH_NORMALIZED = "normalized"
 
 METADATA_FILE = "_word.mlf"
 
-UASPEECH_PATH = "/home/data1/data/UASpeech"
+
 log_path = os.getcwd() + "/uaspeechReport.log"
 
 logging.basicConfig(filename=log_path, format='%(asctime)s,%(msecs)03d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
@@ -35,60 +36,24 @@ logger.info("This is an info log")
 logger.critical("This is critical")
 logger.error("An error occurred")
 
-# UASpeech is not downloadable by url, so we do not need a download method.
-# Might not actually need this method. Ordering utterances doesn't matter in the end
-# But I could modify this to return the label and sequence to clean up the data prep
-# method
-def read_mlf(file_path):
-    """
-    Sorts metadata to match audio files.
-    """
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
+def get_args():
+    parser = argparse.ArgumentParser()
+    
+    parser.add_argument(
+        "--uaspeech-path",
+        type=Path,
+        default='',
+        help="Path to the uaspeech dataset",
+    )
 
-    mlf_data = []
-    current_entry = None
-    b1_count = 0
-    b2_count = 0
-    b3_count = 0
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("data/manifests"),
+        help="Path to the output directory",
+    )
 
-    for line in lines:
-        line = line.strip()
-
-        # Skip comments or empty lines
-        if line.startswith("#") or line.startswith(".") or not line:
-            continue
-
-        # Start of a new entry
-        if line.startswith('"'):
-            if current_entry:
-                if line.__contains__("_B1_"):
-                    b1_count += 1
-                elif line.__contains__("_B2_"):
-                    b2_count += 1
-                elif line.__contains__("_B3_"):
-                    b3_count += 1
-                mlf_data.append(current_entry)
-                # line[3:-5] removes the '*/' and '.lab'
-            current_entry = {'label': line[3:-5], 'sequence': ''}
-        else:
-            # Parse sequence information
-            current_entry['sequence']=line
-    print(f"b1: {b1_count}")
-    print(f"b2: {b2_count}")
-    print(f"b3: {b3_count}")
-    # Append the last entry
-    if current_entry:
-        mlf_data.append(current_entry)
-    """ Lines will look like
-    {'label': 'CF03_B3_UW99_M7', 'sequence': 'AWAY'}
-    {'label': 'CF03_B3_UW99_M8', 'sequence': 'AWAY'}
-    {'label': 'CF03_B3_UW100_M3', 'sequence': 'CRAYON'}
-    {'label': 'CF03_B3_UW100_M5', 'sequence': 'CRAYON'}
-    """ 
-    mlf_data_sorted = natsorted(mlf_data, key=lambda x: x['label'])
-    return mlf_data_sorted
-
+    return parser.parse_args()
 
 def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW': 100}, seed=42):
     """
@@ -635,34 +600,28 @@ def create_speaker_speaker_pair(
         "typical_test_supervisions": typical_supervision_test_set,
     }
 
-# TEMPORARY TEST SCRIPT
-###########################################################################################
-# mlf_file_path = "/home/data1/data/UASpeech/mlf/CF04/CF04_word.mlf"
 
-# mlf_data = read_mlf(mlf_file_path)
-# # label, sequence = mlf_data
-# # Print the result
-# for entry in mlf_data:
-#     print(entry)
-#     print(f"Label: {entry['label']}")
-#     print("Sequence:", end=" ")
-#     for label in entry['sequence']:
-#         print(f"  {label}")
-# typical = {}
-# PATH = "/home/data1/data/UASpeech/mlf/CF02/CF02_word.mlf"
-# extract_mlf_information(typical, PATH)
+def main():
+    args = get_args()
 
-# Issues with CMO9 and feature extraction
-control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
-# atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
+    # Issues with CMO9 and feature extraction
+    control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
+    # atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
 
-# control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
-atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
-atypical_speakers = ["CM05"]
+    # control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
+    atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
+    atypical_speakers = ["CM05"]
 
-# create_speaker_speaker_pair(UASPEECH_PATH, control_speakers, atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
-prep_base_tts(UASPEECH_PATH, control_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
+    # create_speaker_speaker_pair(args.uaspeech_path, control_speakers, atypical_speakers, None, "normalized", args.output_dir)
+    prep_base_tts(args.uaspeech_path , control_speakers, None, "normalized", args.output_dir)
 
-# create_many_to_one_speaker_pair(UASPEECH_PATH, "CM05", atypical_speakers, None, "normalized", output_dir="/home/data1/vall-e.git/VallE/egs/uaspeech/data/manifests")
+    # create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir)
 
-############################################################################################
+    ############################################################################################
+
+if __name__ == "__main__":
+    formatter = (
+        "%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"
+    )
+    logging.basicConfig(format=formatter, level=logging.INFO)
+    main()

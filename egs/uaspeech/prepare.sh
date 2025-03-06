@@ -57,26 +57,12 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   if [ ! -e data/manifests/.uaspeech.done ]; then
     # If lhotse has the prepare_uaspeech in its library try line below
     # lhotse prepare uaspeech $dl_dir/UASpeech data/manifests
-    python /home/data1/vall-e.git/VallE/egs/uaspeech/uaspeech.py $dl_dir/UASpeech data/manifests
+    python uaspeech.py --uaspeech-path /home/data1/data/UASpeech --output-dir data/manifests
     touch data/manifests/.uaspeech.done
   fi
 fi
 
-# Test/Train split handled in stage 1 preparation
-# https://github.com/ffxiong/uaspeech/blob/master/s5_segment/local/prepare_uaspeech_data.sh
-# split B1 B3 as training and B2 as test
 if [ $stage -le 2 ] && [ $stop_stage -ge 2 ]; then
-  log "Stage 2: Split UASpeech"
-
-  if [ ! -e data/manifests/uaspeech_recordings_test.jsonl.gz ]; then
-    # for manifest in /home/data1/VallE/vall-e/egs/uaspeech/data/manifests/uaspeech_cerebral_recordings_all.jsonl.gz;do
-    for manifest in "recordings" "supervisions";do
-      echo $manifest
-    done
-  fi
-fi
-
-if [ $stage -le 3 ] && [ $stop_stage -ge 3 ]; then
   log "Stage 3: ${audio_extractor} UASpeech"
 
   mkdir -p ${audio_feats_dir}
