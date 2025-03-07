@@ -275,7 +275,7 @@ def get_parser():
     parser.add_argument(
         "--voice-conversion",
         type=str2bool,
-        default=True,
+        default=False,
         help="Indicate if you want to train VALL-E as a TTS or VC",
     )
 

@@ -1,6 +1,5 @@
 import logging
 import math, random, re
-from natsort import natsorted
 import re
 import shutil
 import tarfile
