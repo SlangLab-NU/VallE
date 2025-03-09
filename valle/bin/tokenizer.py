@@ -113,16 +113,18 @@ def get_args():
     )
     parser.add_argument(
         "--concat-speakers",
-        type=bool,
-        default=False,
-        help="Concatenates atypical and typical speaker utterances together. This will act"
+        type=int,
+        choices=[0,1],
+        default=0,
+        help="If 1, concatenates atypical and typical speaker utterances together. This will act"
         "as our y input into the model. Intended for TTS VALL-E",
     )
     parser.add_argument(
         "--tts",
-        type=bool,
-        default=False,
-        help="Tokenizes cuts if running vall-e as a TTS model",
+        type=int,
+        choices=[0,1],
+        default=1,
+        help="Tokenizes cuts if running vall-e as a TTS model, 1 if True else False",
     )
 
     return parser.parse_args()
@@ -439,12 +441,14 @@ def main():
         ]
     # Manifest names need to include 'uaspeech_recordings_{dataset_part}' or 'uaspeech_supervision_{dataset_part}'
     elif dataset_parts == "uaspeech_tts":
+        print("TTS")
         dataset_parts = [
             "train",
             "test",
             "dev",
         ]
     elif dataset_parts == "uaspeech_vc":
+        print("VC")
         dataset_parts = [
             "typical_train",
             "atypical_train",
@@ -500,7 +504,7 @@ def main():
                     recordings=m["recordings"],
                     supervisions=m["supervisions"],
                 )
-                if not args.tts:
+                if args.tts == 0:
                     if "train" in partition:
                         if "atypical" in partition:
                             source_train_cuts[partition] = cut_set                        
@@ -519,9 +523,9 @@ def main():
                     # cut.target_recording = Recording.from_file
             except Exception:
                 cut_set = m["cuts"]
-            if args.tts:
+            if args.tts == 1:
                 process_base_tts(args, partition=partition, executor=ex, cuts=cut_set, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
-        if not args.tts:
+        if args.tts == 0:
             process_src_tgt_cuts(args, executor=ex, src=source_train_cuts, tgt=target_train_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
             process_src_tgt_cuts(args, executor=ex, src=source_test_cuts, tgt=target_test_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
             process_src_tgt_cuts(args, executor=ex, src=source_dev_cuts, tgt=target_dev_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)

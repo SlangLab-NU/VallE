@@ -50,7 +50,8 @@ def main():
     manifest_dir = args.manifest_dir or Path("data/tokenized")
     for part in ["train", "dev", "test"]:
         print(f"##  {part}")
-        if not args.run_vc:
+        if args.run_vc == True:
+            print(f"RAN VC cuts_atypical_{part}.jsonl.gz")
             cuts = load_manifest_lazy(manifest_dir / f"cuts_atypical_{part}.jsonl.gz")
         else:
             cuts = load_manifest_lazy(manifest_dir / f"cuts_{part}.jsonl.gz")

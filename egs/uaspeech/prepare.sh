@@ -57,7 +57,7 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   if [ ! -e data/manifests/.uaspeech.done ]; then
     # If lhotse has the prepare_uaspeech in its library try line below
     # lhotse prepare uaspeech $dl_dir/UASpeech data/manifests
-    python uaspeech.py --uaspeech-path /home/data1/data/UASpeech --output-dir data/manifests
+    python uaspeech.py --uaspeech-path /home/data1/data/UASpeech --prep-tts 0 --output-dir data/manifests
     touch data/manifests/.uaspeech.done
   fi
 fi
@@ -67,11 +67,11 @@ if [ $stage -le 2 ] && [ $stop_stage -ge 2 ]; then
 
   mkdir -p ${audio_feats_dir}
   if [ ! -e ${audio_feats_dir}/.uaspeech.done ]; then
-    python3 bin/tokenizer.py --dataset-parts "uaspeech_tts" --prefix "uaspeech" --suffix "jsonl.gz"\
+    python3 bin/tokenizer.py --dataset-parts "uaspeech_vc" --prefix "uaspeech" --suffix "jsonl.gz"\
         --audio-extractor ${audio_extractor} \
         --batch-duration 400 \
-        --concat-speakers false\
-        --tts true\
+        --concat-speakers 0\
+        --tts 0\
         --src-dir "data/manifests" \
         --output-dir "${audio_feats_dir}"
   fi
@@ -80,4 +80,4 @@ if [ $stage -le 2 ] && [ $stop_stage -ge 2 ]; then
 
 fi
 
-python3 ./bin/display_manifest_statistics.py --manifest-dir ${audio_feats_dir} --run-vc false
+python3 ./bin/display_manifest_statistics.py --manifest-dir ${audio_feats_dir} --run-vc true

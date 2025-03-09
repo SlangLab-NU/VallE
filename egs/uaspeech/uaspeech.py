@@ -46,6 +46,14 @@ def get_args():
     )
 
     parser.add_argument(
+        "--prep-tts",
+        type=int,
+        choices=[0,1],
+        default=1,
+        help="Set 1 for True (TTS module), 0 for False (VC mode)",
+    )
+
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("data/manifests"),
@@ -611,10 +619,11 @@ def main():
     atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
     atypical_speakers = ["CM05"]
 
-    # create_speaker_speaker_pair(args.uaspeech_path, control_speakers, atypical_speakers, None, "normalized", args.output_dir)
-    prep_base_tts(args.uaspeech_path , control_speakers, None, "normalized", args.output_dir)
-
-    # create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir)
+    if args.prep_tts == 1:
+        prep_base_tts(args.uaspeech_path , control_speakers, None, "normalized", args.output_dir)
+    else:
+        create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir)
+        # create_speaker_speaker_pair(args.uaspeech_path, control_speakers, atypical_speakers, None, "normalized", args.output_dir)
 
     ############################################################################################
 

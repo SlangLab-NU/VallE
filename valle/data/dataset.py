@@ -80,10 +80,10 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             cuts = transform(cuts)
         audio, audio_lens = None, None
 
-        audio_features, audio_features_lens = self.feature_input_strategy(cuts)
+        source_audio_features, source_audio_features_lens = self.feature_input_strategy(cuts)
 
         for transform in self.feature_transforms:
-            audio_features = transform(audio_features)
+            source_audio_features = transform(source_audio_features)
         
         try:
             is_vc_model = "target_recording" in cuts[0].custom if len(cuts) > 0 else False
@@ -145,27 +145,27 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
                 target_audio_features, target_audio_features_lens = self.feature_input_strategy(target_cuts)
 
                 # Ensure Atypical (source) is always FIRST, followed by Typical (target)
-                final_audio_features = torch.cat([audio_features, target_audio_features], dim=1)
+                concat_audio_features = torch.cat([source_audio_features, target_audio_features], dim=1)
 
-                final_audio_features_lens = audio_features_lens + target_audio_features_lens  # Sum lengths
+                concat_audio_features_lens = source_audio_features_lens + target_audio_features_lens  # Sum lengths
 
                 # Determine max length for padding. Needs to be the two 'same' utterances when added create the longest sequence
                 # Otherwise if we add the features first it will take the two independently largest sequences in the src and tgts
-                max_length = final_audio_features_lens.max().item()
+                max_length = concat_audio_features_lens.max().item()
 
                 # Create a zeroed tensor 
-                final_audio_features = torch.zeros((audio_features.shape[0], max_length, audio_features.shape[2]), dtype=audio_features.dtype, device=audio_features.device)
+                concat_audio_features = torch.zeros((source_audio_features.shape[0], max_length, source_audio_features.shape[2]), dtype=source_audio_features.dtype, device=source_audio_features.device)
 
                 # Fill in the data correctly
-                for i in range(audio_features.shape[0]):
-                    src_len = audio_features_lens[i].item()
+                for i in range(source_audio_features.shape[0]):
+                    src_len = source_audio_features_lens[i].item()
                     tgt_len = target_audio_features_lens[i].item()
                     
-                    final_audio_features[i, :src_len] = audio_features[i, :src_len]  # Place source first
-                    final_audio_features[i, src_len:src_len + tgt_len] = target_audio_features[i, :tgt_len]  # Place target after
+                    concat_audio_features[i, :src_len] = source_audio_features[i, :src_len]  # Place source first
+                    concat_audio_features[i, src_len:src_len + tgt_len] = target_audio_features[i, :tgt_len]  # Place target after
 
             else:
-                final_audio_features, final_audio_features_lens = audio_features, audio_features_lens
+                concat_audio_features, concat_audio_features_lens = source_audio_features, source_audio_features_lens
 
             text_tokens, text_tokens_lens = self.text_token_collater(
                 [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
@@ -173,10 +173,11 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             print(f"utt_id: {[cut.id for cut in cuts]}\n",
                 f"text {[cut.supervisions[0].text for cut in cuts]}\n",
                 f"audio: {audio}\n",
-                f"audio_lens: {audio_lens}\n",
-                f"audio_features: {audio_features}\n",
-                f"atypical_audio_lens: {audio_features_lens}\n",
-                f"audio_features_lens: {final_audio_features_lens}\n",
+                f"audio_lens: {audio_lens}\n", 
+                f"atypical_audio_features: {source_audio_features}\n",
+                f"atypical_audio_lens: {source_audio_features_lens}\n",
+                f"audio_features: {target_audio_features}\n",
+                f"audio_features_lens: {target_audio_features_lens}\n",
                 f"text_tokens: {text_tokens}\n",
                 f"text_tokens_lens: {text_tokens_lens}",)
             return {
@@ -184,14 +185,16 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
                 "text": [cut.supervisions[0].text for cut in cuts],
                 "audio": audio,
                 "audio_lens": audio_lens,
-                "atypical_audio_features_lens": audio_features_lens,
-                "audio_features": final_audio_features,
-                "audio_features_lens": final_audio_features_lens,
+                "atypical_audio_features": source_audio_features,
+                "atypical_audio_features_lens": source_audio_features_lens,
+                "target_audio_features": target_audio_features,
+                "target_audio_features_lens": target_audio_features_lens,
                 "text_tokens": text_tokens,
                 "text_tokens_lens": text_tokens_lens,
             }
         
         else:
+            print("WENT DOWN TTS ROUTE")
             text_tokens, text_tokens_lens = self.text_token_collater(
                 [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
             )
@@ -200,8 +203,8 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             "text": [cut.supervisions[0].text for cut in cuts],
             "audio": audio,
             "audio_lens": audio_lens,
-            "audio_features": audio_features,
-            "audio_features_lens": audio_features_lens,
+            "target_audio_features": source_audio_features,
+            "target_audio_features_lens": source_audio_features_lens,
             "text_tokens": text_tokens,
             "text_tokens_lens": text_tokens_lens,
             }

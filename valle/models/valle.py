@@ -768,6 +768,7 @@ class VALLE(VALLF):
         reduction: str = "sum",
         train_stage: int = 0,
         many_to_one: bool = True,
+        atypical_audio_features: Union[torch.Tensor, PromptedFeatures] = None,
         atypical_audio_lens: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Tuple[torch.Tensor, Union[torch.Tensor, None]]:
@@ -808,20 +809,28 @@ class VALLE(VALLF):
         y_mask_int = y_mask.type(torch.int64)
 
         if many_to_one:
+            atypical_mask = make_pad_mask(atypical_audio_lens).to(atypical_audio_features.device)
+            atypical_mask_int = atypical_mask.type(torch.int64)
+            atypical_codes = atypical_audio_features.type(torch.int64) * (1 - atypical_mask_int.unsqueeze(dim=-1))
+
+            atypical_audio, _ = self.pad_y_eos(
+                atypical_codes[..., 0], atypical_mask_int, eos_id=NUM_AUDIO_TOKENS
+            )
+            print(f"atypical audio batch: {atypical_audio}")
             # Hybrid Causal/Non-Causal Masking for `y`
-            seq_len = y.shape[1]  # Total length of y (both atypical + typical speech)
-            batch_size = y.shape[0]
-            # Initialize a non-causal mask (default: full visibility)
-            hybrid_mask = torch.ones((batch_size, seq_len), dtype=torch.bool, device=y.device)
+            # seq_len = y.shape[1]  # Total length of y (both atypical + typical speech)
+            # batch_size = y.shape[0]
+            # # Initialize a non-causal mask (default: full visibility)
+            # hybrid_mask = torch.ones((batch_size, seq_len), dtype=torch.bool, device=y.device)
 
-            # Create causal masks per sample
-            for i in range(batch_size):
-                typical_start = atypical_audio_lens[i]  # Start index of typical speech
-                typical_length = seq_len - typical_start  # Length of typical speech
-                hybrid_mask[i, typical_start:] = torch.arange(typical_length, device=y.device) >= 0
+            # # Create causal masks per sample
+            # for i in range(batch_size):
+            #     typical_start = atypical_audio_lens[i]  # Start index of typical speech
+            #     typical_length = seq_len - typical_start  # Length of typical speech
+            #     hybrid_mask[i, typical_start:] = torch.arange(typical_length, device=y.device) >= 0
 
-            # Apply Hybrid Mask
-            y_mask_int = hybrid_mask.type(torch.int64)
+            # # Apply Hybrid Mask
+            # y_mask_int = hybrid_mask.type(torch.int64)
 
         text = x
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
