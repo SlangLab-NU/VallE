@@ -419,7 +419,14 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
             extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer)
     
         logging.info(f"Writing cutset to: {src_partition}.{args.suffix}")
-        cuts_filename = f"{src_partition}.{args.suffix}"
+        # Need this to keep the tokenized filenames the same between tts and vc
+        if "dev" in src_partition:
+            cuts_filename = f"dev.{args.suffix}"
+        elif "test" in src_partition:
+            cuts_filename = f"test.{args.suffix}"
+        else:
+            cuts_filename = f"train.{args.suffix}"
+        
         src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
     
     write_text_tokens(args, unique_symbols)

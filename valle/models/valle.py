@@ -808,29 +808,81 @@ class VALLE(VALLF):
         y_mask = make_pad_mask(y_lens).to(y.device)
         y_mask_int = y_mask.type(torch.int64)
 
-        if many_to_one:
-            atypical_mask = make_pad_mask(atypical_audio_lens).to(atypical_audio_features.device)
-            atypical_mask_int = atypical_mask.type(torch.int64)
-            atypical_codes = atypical_audio_features.type(torch.int64) * (1 - atypical_mask_int.unsqueeze(dim=-1))
+        max_atypical_len = 0
 
+        if many_to_one:
+            # add one to each item to ensure there is a pad token at the end of all atyp sequences
+            atypical_mask = make_pad_mask(atypical_audio_lens + 1).to(atypical_audio_features.device)
+            atypical_mask_int = atypical_mask.type(torch.int64)
+
+            max_atypical_len = atypical_audio_lens.max().item() + 1
+            atypical_codes_padded = F.pad(
+                atypical_audio_features, (0, 0, 0, max_atypical_len - atypical_audio_features.shape[1]),
+                value=NUM_AUDIO_TOKENS
+            )
+
+            atypical_codes = atypical_codes_padded.type(torch.int64) * (1 - atypical_mask_int.unsqueeze(dim=-1))
             atypical_audio, _ = self.pad_y_eos(
                 atypical_codes[..., 0], atypical_mask_int, eos_id=NUM_AUDIO_TOKENS
             )
-            print(f"atypical audio batch: {atypical_audio}")
-            # Hybrid Causal/Non-Causal Masking for `y`
-            # seq_len = y.shape[1]  # Total length of y (both atypical + typical speech)
-            # batch_size = y.shape[0]
-            # # Initialize a non-causal mask (default: full visibility)
-            # hybrid_mask = torch.ones((batch_size, seq_len), dtype=torch.bool, device=y.device)
 
-            # # Create causal masks per sample
-            # for i in range(batch_size):
-            #     typical_start = atypical_audio_lens[i]  # Start index of typical speech
-            #     typical_length = seq_len - typical_start  # Length of typical speech
-            #     hybrid_mask[i, typical_start:] = torch.arange(typical_length, device=y.device) >= 0
+            print("Before expansion:")
+            print("Atypical shape:", atypical_audio.shape)
+            print("Typical shape:", y.shape)
 
-            # # Apply Hybrid Mask
-            # y_mask_int = hybrid_mask.type(torch.int64)
+            # Ensure proper shape
+            if atypical_audio.ndim == 2:
+                atypical_audio = atypical_audio.unsqueeze(-1).expand(-1, -1, atypical_audio_features.shape[2])
+
+            print("After expansion:")
+            print("Atypical shape:", atypical_audio.shape)
+
+            # Check values
+            print("Atypical features values:", atypical_audio_features[0, :5])
+            print("Atypical values:", atypical_audio[0, :5])  # First 5 time steps
+            print("Typical values:", y[0, :5])  # First 5 time steps
+
+            print(f"atypical audio: {atypical_audio.shape}")
+            print(f"y audio: {y.shape}")
+
+            # Update y to consist of atypical + typical audio
+            y = torch.cat([atypical_audio, y], dim=1)
+            y_mask = torch.cat([atypical_mask, y_mask], dim=1)
+
+            # **Hybrid Masking**
+            atypical_len = max_atypical_len
+            typical_len = y.shape[1]
+            seq_len = atypical_len + typical_len
+            batch_size = y.shape[0]
+
+            # fully non-causal mask
+            non_causal_mask = torch.ones((batch_size, atypical_len, atypical_len), dtype=torch.bool, device=y.device)
+
+            # Set causal mask for typical speech
+            causal_mask = torch.triu(
+                torch.ones((batch_size, typical_len, typical_len), dtype=torch.bool, device=y.device),
+                diagonal=1
+            )
+            
+            # Atypical to Typical Block (Fully Visible)
+            # Shape: [batch_size, atypical_len, typical_len]
+            atypical_to_typical = torch.ones((batch_size, atypical_len, typical_len), dtype=torch.bool, device=y.device)
+            
+            # Correct Lower-Left Block (Zero Visibility)
+            # Shape: [batch_size, typical_len, atypical_len]
+            typical_to_atypical = torch.zeros((batch_size, typical_len, atypical_len), dtype=torch.bool, device=y.device)
+
+            # Upper row: atypical speech (non-causal) + atypical-to-typical (fully visible)
+            # Lower row: typical-to-atypical (zero visibility) + typical speech (causal)
+            hybrid_mask = torch.cat([
+                torch.cat([non_causal_mask, atypical_to_typical], dim=2),  # [batch, atypical_len, seq_len]
+                torch.cat([typical_to_atypical, causal_mask], dim=2)  # [batch, typical_len, seq_len]
+            ], dim=1)
+
+            assert hybrid_mask.shape == (batch_size, seq_len, seq_len), f"Unexpected shape: {hybrid_mask.shape}"
+
+            # Convert hybrid mask to int for loss calculations
+            y_mask_int = hybrid_mask.type(torch.int64)
 
         text = x
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
@@ -859,21 +911,32 @@ class VALLE(VALLF):
             x = self.ar_text_prenet(x)
             x = self.ar_text_position(x)
 
-            y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
+            if many_to_one:
+                y_len = y.shape[1] + int(self.ar_audio_prepend_bos)
+            else:
+                y_len = y_lens.max() + int(self.ar_audio_prepend_bos)
 
             x_attn_mask = F.pad(
                 torch.zeros((x_len, x_len), dtype=torch.bool, device=x.device),
                 (0, y_len),
                 value=True,
             )
-            y_attn_mask = F.pad(
-                torch.triu(
-                    torch.ones(y_len, y_len, dtype=torch.bool, device=x.device),
-                    diagonal=1,
-                ),
+            if many_to_one:
+                y_attn_mask = F.pad(
+                hybrid_mask,
                 (x_len, 0),
                 value=False,
-            )
+                )
+            else:    
+                y_attn_mask = F.pad(
+                    torch.triu(
+                        torch.ones(y_len, y_len, dtype=torch.bool, device=x.device),
+                        diagonal=1,
+                    ),
+                    (x_len, 0),
+                    value=False,
+                )
+            
             xy_attn_mask = torch.concat([x_attn_mask, y_attn_mask], dim=0)
 
             # merge key padding and attention masks

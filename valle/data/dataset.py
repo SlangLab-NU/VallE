@@ -170,16 +170,16 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             text_tokens, text_tokens_lens = self.text_token_collater(
                 [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
             )
-            print(f"utt_id: {[cut.id for cut in cuts]}\n",
-                f"text {[cut.supervisions[0].text for cut in cuts]}\n",
-                f"audio: {audio}\n",
-                f"audio_lens: {audio_lens}\n", 
-                f"atypical_audio_features: {source_audio_features}\n",
-                f"atypical_audio_lens: {source_audio_features_lens}\n",
-                f"audio_features: {target_audio_features}\n",
-                f"audio_features_lens: {target_audio_features_lens}\n",
-                f"text_tokens: {text_tokens}\n",
-                f"text_tokens_lens: {text_tokens_lens}",)
+            # print(f"utt_id: {[cut.id for cut in cuts]}\n",
+            #     f"text {[cut.supervisions[0].text for cut in cuts]}\n",
+            #     f"audio: {audio}\n",
+            #     f"audio_lens: {audio_lens}\n", 
+            #     f"atypical_audio_features: {source_audio_features}\n",
+            #     f"atypical_audio_lens: {source_audio_features_lens}\n",
+            #     f"audio_features: {target_audio_features}\n",
+            #     f"audio_features_lens: {target_audio_features_lens}\n",
+            #     f"text_tokens: {text_tokens}\n",
+            #     f"text_tokens_lens: {text_tokens_lens}",)
             return {
                 "utt_id": [cut.id for cut in cuts],
                 "text": [cut.supervisions[0].text for cut in cuts],
@@ -194,7 +194,6 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             }
         
         else:
-            print("WENT DOWN TTS ROUTE")
             text_tokens, text_tokens_lens = self.text_token_collater(
                 [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
             )

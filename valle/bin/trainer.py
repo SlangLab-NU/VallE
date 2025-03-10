@@ -540,6 +540,7 @@ def compute_loss(
                 atypical_audio_lens=atypical_features_lens,
                 y=target_audio_features,
                 y_lens=target_audio_features_lens,
+                many_to_one=True,
                 train_stage=params.train_stage,
             )
     else:

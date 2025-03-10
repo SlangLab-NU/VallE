@@ -54,6 +54,29 @@ def get_args():
     )
 
     parser.add_argument(
+        "--control-tts",
+        type=int,
+        choices=[0,1],
+        default=1,
+        help="Set 1 to prep full control data, 0 for False",
+    )
+
+    parser.add_argument(
+        "--atypical-tts",
+        type=int,
+        choices=[0,1],
+        default=1,
+        help="Set 1 to prep full atypical data, 0 for False",
+    )
+
+    parser.add_argument(
+        "--suffix",
+        type=str,
+        default="jsonl.gz",
+        help="suffix of the manifest file",
+    )
+
+    parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("data/manifests"),
@@ -610,18 +633,25 @@ def create_speaker_speaker_pair(
 
 def main():
     args = get_args()
+    
+    print(f"prep_tts: {args.prep_tts}, control_tts: {args.control_tts}, atypical_tts: {args.atypical_tts}")
 
     # Issues with CMO9 and feature extraction
     control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
-    # atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
+    atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
 
-    # control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
-    atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
-    atypical_speakers = ["CM05"]
-
-    if args.prep_tts == 1:
-        prep_base_tts(args.uaspeech_path , control_speakers, None, "normalized", args.output_dir)
+    if int(args.prep_tts) == 1:
+        if args.control_tts == 1 and args.atypical_tts == 0:
+            prep_base_tts(args.uaspeech_path , control_speakers, None, "normalized", args.output_dir)
+        elif args.control_tts == 0 and args.atypical_tts == 1:
+            prep_base_tts(args.uaspeech_path , atypical_speakers, None, "normalized", args.output_dir)
+        else:
+            # Prep both control and atypical
+            prep_base_tts(args.uaspeech_path , control_speakers + atypical_speakers, None, "normalized", args.output_dir)
     else:
+        # control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
+        atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
+        atypical_speakers = ["CM05"]
         create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir)
         # create_speaker_speaker_pair(args.uaspeech_path, control_speakers, atypical_speakers, None, "normalized", args.output_dir)
 
