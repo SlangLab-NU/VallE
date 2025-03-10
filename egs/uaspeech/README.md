@@ -21,7 +21,8 @@ cd egs/uaspeech
 4) Prep Data (IF NEEDED)
 
 step1 prepare dataset
-**if prep-tts = 0, we will prep data for many-to-one VC**
+**if prep-tts = 0, we will prep data for many-to-one VC, otherwise it will run base tts**
+**control-tts and atypical-tts will use all speakers respectively if 1. This is how you can train just control, just atypical or both**
 
 ```
 bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 1 --control-tts 1 --atypical-tts 0
