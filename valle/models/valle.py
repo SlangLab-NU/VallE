@@ -332,7 +332,7 @@ class VALLF(nn.Module):
 
         return targets[:, :-1], targets[:, 1:]
 
-    def _prepare_prompts(self, y, y_lens, codes, nar_stage, y_prompts_codes):
+    def _prepare_prompts(self, y, y_lens, codes, nar_stage, y_prompts_codes, max_atypical_len=None):
         # 5.1 For the NAR acoustic prompt tokens, we select a random segment waveform of 3 seconds
         # from the same utterance.
         # We implement this differently.
@@ -348,6 +348,23 @@ class VALLF(nn.Module):
             int_low = (0.25 * y_lens.min()).type(torch.int64).item()
             prefix_len = torch.randint(int_low, int_low * 2, size=()).item()
             prefix_len = min(prefix_len, 225)  # 24000/320 * 3s = 225 frames
+
+            y_prompts = self.nar_audio_embeddings[0](y[:, :prefix_len])
+            y_emb = self.nar_audio_embeddings[0](y[:, prefix_len:])
+            for j in range(1, self.num_quantizers):
+                y_prompts += self.nar_audio_embeddings[j](
+                    codes[:, :prefix_len, j]
+                )
+                if j < nar_stage:
+                    y_emb += self.nar_audio_embeddings[j](
+                        codes[:, prefix_len:, j]
+                    )
+            y_emb = torch.concat([y_prompts, y_emb], axis=1)
+
+        # TODO Change mode to 5. Remove the prefix_len and make it max_atypical_len
+        elif self.prefix_mode == 5:
+            # prefix at begining
+            prefix_len = max_atypical_len
 
             y_prompts = self.nar_audio_embeddings[0](y[:, :prefix_len])
             y_emb = self.nar_audio_embeddings[0](y[:, prefix_len:])
@@ -759,6 +776,74 @@ class VALLE(VALLF):
             **kwargs,
         )
 
+
+    def extract_atypical_audio(self, atypical_audio_features, atypical_audio_lens):
+        """
+        Extracts audio features for the atypical speaker. Pads the batch so all 
+        sequence lengths are the same and end with an EOS token
+        @param atypical_audio_features: The audio features for the atypical speaker
+        @param atypical_audio_lens: The lengths of all sequences in the atypical batch
+        return atypical_audio: the atypical audio batch padded to longest sequence length + 1 (eos)
+        return atypical_mask: The padding mask for the atypical audio sequences
+        """
+        # Similar processing as y in forward
+        atypical_mask = make_pad_mask(atypical_audio_lens).to(atypical_audio_features.device)
+        atypical_mask_int = atypical_mask.type(torch.int64)
+        
+        atypical_codes = atypical_audio_features.type(torch.int64) * (1 - atypical_mask_int.unsqueeze(dim=-1))
+        atypical_audio, _ = self.pad_y_eos(
+            atypical_codes[..., 0], atypical_mask_int, eos_id=NUM_AUDIO_TOKENS
+        )
+
+        # Ensure EOS added to all atypical utterances
+        eos_tensor = torch.full(
+            (atypical_audio.shape[0], 1),  # (batch_size, 1)
+            NUM_AUDIO_TOKENS,  # EOS token
+            dtype=atypical_audio.dtype,
+            device=atypical_audio.device
+        )
+        atypical_audio = torch.cat([atypical_audio, eos_tensor], dim=1)  # Append EOS
+
+        # Update atypical_mask (Boolean)
+        eos_mask = torch.full(
+            (atypical_mask.shape[0], 1),  # Shape: (batch_size, 1)
+            True,  # EOS is padding, so it should be `True`
+            dtype=torch.bool,
+            device=atypical_mask.device
+        )
+
+        atypical_mask = torch.cat([atypical_mask, eos_mask], dim=1)
+
+        # Ensure proper shape
+        if atypical_audio.ndim == 2:
+            atypical_audio = atypical_audio.unsqueeze(-1).expand(-1, -1, atypical_audio_features.shape[2])
+
+        return atypical_audio, atypical_mask
+    
+    def create_hybrid_mask(self, y, max_atypical_len):
+        """
+        Creates a non-causal and causal hybrid mask
+        @param y: the concatenated audio of atypical + typical speaker
+        @param max_atypical_len: The max length of atypical sequences in the batch
+        return hybrid_mask: Concatenated mask with non-causal for atypical speech and 
+                causal for typical speech
+        """
+
+        seq_len = y.shape[1] # Total sequence length
+        atypical_len = max_atypical_len
+        # Initialize Hybrid Mask as Fully Non-Causal
+        hybrid_mask = torch.ones((seq_len, seq_len), dtype=torch.bool, device=y.device)
+
+        # Apply Causal Mask to the Typical Region
+        hybrid_mask[atypical_len:, atypical_len:] = torch.triu(
+            torch.ones((seq_len - atypical_len, seq_len - atypical_len), dtype=torch.bool, device=y.device),
+            diagonal=1
+        )  
+        # Ensure Correct Shape
+        assert hybrid_mask.shape == (seq_len, seq_len), f"Unexpected hybrid_mask shape: {hybrid_mask.shape}"   
+
+        return hybrid_mask     
+
     def forward(
         self,
         x: torch.Tensor,
@@ -791,7 +876,6 @@ class VALLE(VALLF):
         """
         assert x.ndim == 2, x.shape
         assert x_lens.ndim == 1, x_lens.shape
-
         y_prompts_codes = None
         if isinstance(y, PromptedFeatures):
             y_prompts_codes, y = y.data
@@ -807,86 +891,22 @@ class VALLE(VALLF):
         x_mask = make_pad_mask(x_lens).to(x.device)
         y_mask = make_pad_mask(y_lens).to(y.device)
         y_mask_int = y_mask.type(torch.int64)
-
         max_atypical_len = 0
 
         if many_to_one:
-            # add one to each item to ensure there is a pad token at the end of all atyp sequences
-            atypical_mask = make_pad_mask(atypical_audio_lens + 1).to(atypical_audio_features.device)
-            atypical_mask_int = atypical_mask.type(torch.int64)
-
+   
+            atypical_audio, atypical_mask = self.extract_atypical_audio(atypical_audio_features, atypical_audio_lens)
             max_atypical_len = atypical_audio_lens.max().item() + 1
-            atypical_codes_padded = F.pad(
-                atypical_audio_features, (0, 0, 0, max_atypical_len - atypical_audio_features.shape[1]),
-                value=NUM_AUDIO_TOKENS
-            )
 
-            atypical_codes = atypical_codes_padded.type(torch.int64) * (1 - atypical_mask_int.unsqueeze(dim=-1))
-            atypical_audio, _ = self.pad_y_eos(
-                atypical_codes[..., 0], atypical_mask_int, eos_id=NUM_AUDIO_TOKENS
-            )
-
-            print("Before expansion:")
-            print("Atypical shape:", atypical_audio.shape)
-            print("Typical shape:", y.shape)
-
-            # Ensure proper shape
-            if atypical_audio.ndim == 2:
-                atypical_audio = atypical_audio.unsqueeze(-1).expand(-1, -1, atypical_audio_features.shape[2])
-
-            print("After expansion:")
-            print("Atypical shape:", atypical_audio.shape)
-
-            # Check values
-            print("Atypical features values:", atypical_audio_features[0, :5])
-            print("Atypical values:", atypical_audio[0, :5])  # First 5 time steps
-            print("Typical values:", y[0, :5])  # First 5 time steps
-
-            print(f"atypical audio: {atypical_audio.shape}")
-            print(f"y audio: {y.shape}")
-
-            # Update y to consist of atypical + typical audio
+            # Concatenate atypical and typical audio sequences 
+            # and update the masking
             y = torch.cat([atypical_audio, y], dim=1)
-            y_mask = torch.cat([atypical_mask, y_mask], dim=1)
-
-            # **Hybrid Masking**
-            atypical_len = max_atypical_len
-            typical_len = y.shape[1]
-            seq_len = atypical_len + typical_len
-            batch_size = y.shape[0]
-
-            # fully non-causal mask
-            non_causal_mask = torch.ones((batch_size, atypical_len, atypical_len), dtype=torch.bool, device=y.device)
-
-            # Set causal mask for typical speech
-            causal_mask = torch.triu(
-                torch.ones((batch_size, typical_len, typical_len), dtype=torch.bool, device=y.device),
-                diagonal=1
-            )
-            
-            # Atypical to Typical Block (Fully Visible)
-            # Shape: [batch_size, atypical_len, typical_len]
-            atypical_to_typical = torch.ones((batch_size, atypical_len, typical_len), dtype=torch.bool, device=y.device)
-            
-            # Correct Lower-Left Block (Zero Visibility)
-            # Shape: [batch_size, typical_len, atypical_len]
-            typical_to_atypical = torch.zeros((batch_size, typical_len, atypical_len), dtype=torch.bool, device=y.device)
-
-            # Upper row: atypical speech (non-causal) + atypical-to-typical (fully visible)
-            # Lower row: typical-to-atypical (zero visibility) + typical speech (causal)
-            hybrid_mask = torch.cat([
-                torch.cat([non_causal_mask, atypical_to_typical], dim=2),  # [batch, atypical_len, seq_len]
-                torch.cat([typical_to_atypical, causal_mask], dim=2)  # [batch, typical_len, seq_len]
-            ], dim=1)
-
-            assert hybrid_mask.shape == (batch_size, seq_len, seq_len), f"Unexpected shape: {hybrid_mask.shape}"
-
-            # Convert hybrid mask to int for loss calculations
-            y_mask_int = hybrid_mask.type(torch.int64)
+            y_mask = torch.cat([atypical_mask.squeeze(-1), y_mask], dim=1)
+            y_mask_int = y_mask.type(torch.int64)
 
         text = x
         codes = y.type(torch.int64) * (1 - y_mask_int.unsqueeze(dim=-1))
-
+        
         y, targets = self.pad_y_eos(
             codes[..., 0], y_mask_int, eos_id=NUM_AUDIO_TOKENS
         )
@@ -921,12 +941,10 @@ class VALLE(VALLF):
                 (0, y_len),
                 value=True,
             )
-            if many_to_one:
-                y_attn_mask = F.pad(
-                hybrid_mask,
-                (x_len, 0),
-                value=False,
-                )
+
+            if many_to_one:   
+                hybrid_mask = self.create_hybrid_mask(y, max_atypical_len)
+                y_attn_mask = F.pad(hybrid_mask, (x_len, 0), value=False)
             else:    
                 y_attn_mask = F.pad(
                     torch.triu(
@@ -964,7 +982,12 @@ class VALLE(VALLF):
                 # src_key_padding_mask=xy_padding_mask,
                 # is_causal=True,
             )
-            logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
+            # TODO add visual representation of learning and predictions - histogram potentially?
+            if many_to_one:
+                targets = y[:, max_atypical_len:]
+                logits = self.ar_predict_layer(xy_dec[:, x_len + max_atypical_len:]).permute(0, 2, 1)
+            else:
+                logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
             # loss
             total_loss = F.cross_entropy(logits, targets, reduction=reduction)
 
@@ -990,12 +1013,23 @@ class VALLE(VALLF):
             x = self.nar_text_prenet(x)
             x = self.nar_text_position(x)
 
-            y_emb, prefix_len = self._prepare_prompts(
-                y, y_lens, codes, nar_stage, y_prompts_codes
-            )
+            if many_to_one:
+                y_emb, prefix_len = self._prepare_prompts(
+                    y, y_lens, codes, nar_stage, y_prompts_codes, max_atypical_len
+                )
+            else:
+                y_emb, prefix_len = self._prepare_prompts(
+                    y, y_lens, codes, nar_stage, y_prompts_codes
+                )
 
             y_len = y_lens.max()
+
+            # TODO maybe dont need this block given change to y_emb
+            # if many_to_one:
+            #     targets = codes[:, max_atypical_len:, nar_stage] + NUM_AUDIO_TOKENS * y_mask_int[:, max_atypical_len:]
+            # else:
             targets = codes[..., nar_stage] + NUM_AUDIO_TOKENS * y_mask_int
+            
             if self.prefix_mode in [2, 4]:
                 xy_padding_mask = torch.concat(
                     [
@@ -1004,7 +1038,7 @@ class VALLE(VALLF):
                     ],
                     dim=1,
                 )
-            elif self.prefix_mode == 1:
+            elif self.prefix_mode in [1, 5]:
                 targets = targets[:, prefix_len:]
 
             y_pos = self.nar_audio_prenet(y_emb)
@@ -1015,7 +1049,9 @@ class VALLE(VALLF):
                 src_key_padding_mask=xy_padding_mask,
                 # is_causal=False,
             )
-            xy_dec = xy_dec[:, x_lens.max() + prefix_len :]
+
+            xy_dec = xy_dec[:, x_lens.max() + prefix_len:]
+
             if self.prefix_mode == 4:
                 prefix_len = 0  # reset for Top10Accuracy metric
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
