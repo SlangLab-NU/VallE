@@ -1029,7 +1029,6 @@ class VALLE(VALLF):
             #     targets = codes[:, max_atypical_len:, nar_stage] + NUM_AUDIO_TOKENS * y_mask_int[:, max_atypical_len:]
             # else:
             targets = codes[..., nar_stage] + NUM_AUDIO_TOKENS * y_mask_int
-            
             if self.prefix_mode in [2, 4]:
                 xy_padding_mask = torch.concat(
                     [
@@ -1038,25 +1037,38 @@ class VALLE(VALLF):
                     ],
                     dim=1,
                 )
+            
             elif self.prefix_mode in [1, 5]:
                 targets = targets[:, prefix_len:]
 
+            if many_to_one and self.prefix_mode == 0:
+               targets[:, :max_atypical_len] = NUM_AUDIO_TOKENS
+            print(f"🚨 x mean/std: {x.mean().item()}, {x.std().item()}")
+            print(f"🚨 y_emb mean/std: {y_emb.mean().item()}, {y_emb.std().item()}")
             y_pos = self.nar_audio_prenet(y_emb)
-            y_pos = self.nar_audio_position(y_pos)
+            y_pos = self.nar_audio_position(y_pos)  
             xy_pos = torch.concat([x, y_pos], dim=1)
             xy_dec, _ = self.nar_decoder(
                 (xy_pos, self.nar_stage_embeddings[nar_stage - 1].weight),
                 src_key_padding_mask=xy_padding_mask,
                 # is_causal=False,
             )
-
             xy_dec = xy_dec[:, x_lens.max() + prefix_len:]
-
             if self.prefix_mode == 4:
                 prefix_len = 0  # reset for Top10Accuracy metric
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
                 0, 2, 1
             )
+
+            softmax_output = F.softmax(logits, dim=1)  
+            predicted_indices = torch.argmax(softmax_output, dim=1)
+            print(f"X shape: {x.shape}")
+            print(f"Y_emb shape: {y_emb.shape}")
+            print(f"NAR STAGE: {nar_stage}")
+            print(f"🚨 logits min/max: {logits.min().item()}, {logits.max().item()}")
+
+            print(f"prediction: {predicted_indices.shape}\n{predicted_indices}")
+            print(f"targets: {targets.shape} \n{targets}")
 
             # loss
             total_length = (y_lens).sum().type(torch.float32)
