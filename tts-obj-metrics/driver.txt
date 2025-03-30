@@ -1,0 +1,2 @@
+look examples/sources/librispeech_look.wav look examples/targets/CM05_B2_CW69_M8.wav
+adjacent examples/sources/librispeech_adjacent.wav adjacent examples/targets/CF02_B2_UW20_M3.wav
