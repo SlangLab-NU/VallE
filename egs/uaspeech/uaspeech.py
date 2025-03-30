@@ -638,7 +638,12 @@ def main():
 
     # Issues with CMO9 and feature extraction
     control_speakers = ["CF02", "CF03", "CF04", "CM04", "CM05", "CM06", "CM08", "CM10", "CM12", "CM13"]
-    atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"]
+    # what I had accidentally been using before...
+    # atypical_speakers = ["F02", "F03", "F04", "M04", "M05", "M07", "M08", "M10", "M11", "M12"] 
+
+    # issues with F05
+    atypical_speakers = ["F02", "F03", "F04", "M01", "M04", "M05", "M07", "M08", 
+                         "M09", "M10", "M11", "M12", "M14", "M16"]
 
     if int(args.prep_tts) == 1:
         if args.control_tts == 1 and args.atypical_tts == 0:

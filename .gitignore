@@ -42,3 +42,6 @@ egs/uaspeech/typical_speakers_trainH5.json
 egs/uaspeech/new*
 egs/uaspeech/test_dev_codes.txt
 egs/uaspeech/atypical_speakers_trainH5.json
+egs/uaspeech/inference_list.txt
+.gitignore
+egs/uaspeech/inference_text.log

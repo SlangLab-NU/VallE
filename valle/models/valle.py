@@ -1043,8 +1043,7 @@ class VALLE(VALLF):
 
             if many_to_one and self.prefix_mode == 0:
                targets[:, :max_atypical_len] = NUM_AUDIO_TOKENS
-            print(f"🚨 x mean/std: {x.mean().item()}, {x.std().item()}")
-            print(f"🚨 y_emb mean/std: {y_emb.mean().item()}, {y_emb.std().item()}")
+               
             y_pos = self.nar_audio_prenet(y_emb)
             y_pos = self.nar_audio_position(y_pos)  
             xy_pos = torch.concat([x, y_pos], dim=1)
@@ -1062,13 +1061,13 @@ class VALLE(VALLF):
 
             softmax_output = F.softmax(logits, dim=1)  
             predicted_indices = torch.argmax(softmax_output, dim=1)
-            print(f"X shape: {x.shape}")
-            print(f"Y_emb shape: {y_emb.shape}")
-            print(f"NAR STAGE: {nar_stage}")
-            print(f"🚨 logits min/max: {logits.min().item()}, {logits.max().item()}")
+            # print(f"X shape: {x.shape}")
+            # print(f"Y_emb shape: {y_emb.shape}")
+            # print(f"NAR STAGE: {nar_stage}")
+            # print(f"🚨 logits min/max: {logits.min().item()}, {logits.max().item()}")
 
-            print(f"prediction: {predicted_indices.shape}\n{predicted_indices}")
-            print(f"targets: {targets.shape} \n{targets}")
+            # print(f"prediction: {predicted_indices.shape}\n{predicted_indices}")
+            # print(f"targets: {targets.shape} \n{targets}")
 
             # loss
             total_length = (y_lens).sum().type(torch.float32)

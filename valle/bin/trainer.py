@@ -79,6 +79,18 @@ def set_batch_count(model: Union[nn.Module, DDP], batch_count: float) -> None:
         if hasattr(module, "batch_count"):
             module.batch_count = batch_count
 
+def freeze_lower_layers(model: nn.Module, num_layers_to_freeze: int):
+    def _freeze(module_list):
+        for idx, layer in enumerate(module_list):
+            if idx < num_layers_to_freeze:
+                for param in layer.parameters():
+                    param.requires_grad = False
+
+    if hasattr(model, "encoder") and hasattr(model.encoder, "layers"):
+        _freeze(model.encoder.layers)
+
+    if hasattr(model, "decoder") and hasattr(model.decoder, "layers"):
+        _freeze(model.decoder.layers)
 
 def get_parser():
     parser = argparse.ArgumentParser(
@@ -278,6 +290,13 @@ def get_parser():
         default=False,
         help="Indicate if you want to train VALL-E as a TTS or VC",
     )
+
+    parser.add_argument(
+        "--freeze-lower-layers",
+        type=int,
+        default=0,
+        help="Number of lower encoder and decoder layers to freeze. 0 means train all layers.",
+    )   
 
     add_model_arguments(parser)
 
@@ -915,6 +934,12 @@ def run(rank, world_size, args):
 
     logging.info("About to create model")
     model = get_model(params)
+    #-----------------------------Model Freezing------------------------------------------------
+    if args.freeze_lower_layers > 0:
+        _model = model.module if isinstance(model, DDP) else model
+        freeze_lower_layers(_model, args.freeze_lower_layers)
+        logging.info(f"Froze bottom {args.freeze_lower_layers} encoder/decoder layers.")
+    #-----------------------------Model Freezing------------------------------------------------
     with open(f"{params.exp_dir}/model.txt", "w") as f:
         print(model)
         print(model, file=f)
