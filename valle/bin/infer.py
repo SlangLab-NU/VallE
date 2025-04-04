@@ -204,20 +204,23 @@ def main():
                 audio_prompts = audio_prompts[0][0].transpose(2, 1).to(device)
 
                 # synthesis
-                encoded_frames = model.inference(
-                    text_tokens.to(device),
-                    text_tokens_lens.to(device),
-                    audio_prompts,
-                    enroll_x_lens=enroll_x_lens,
-                    top_k=args.top_k,
-                    temperature=args.temperature,
-                )
+                try:
+                    encoded_frames = model.inference(
+                        text_tokens.to(device),
+                        text_tokens_lens.to(device),
+                        audio_prompts,
+                        enroll_x_lens=enroll_x_lens,
+                        top_k=args.top_k,
+                        temperature=args.temperature,
+                    )
 
-                samples = audio_tokenizer.decode(
-                    [(encoded_frames.transpose(2, 1), None)]
-                )
-                # store
-                torchaudio.save(audio_path, samples[0].cpu(), 24000)
+                    samples = audio_tokenizer.decode(
+                        [(encoded_frames.transpose(2, 1), None)]
+                    )
+                    # store
+                    torchaudio.save(audio_path, samples[0].cpu(), 24000)
+                except:
+                    print("Well trained model shouldnt reach here")
         return
 
     for n, text in enumerate(args.text.split("|")):
