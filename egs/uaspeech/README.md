@@ -56,5 +56,18 @@ python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.5 --filter-max-
 9) Run inference
 
 ```
+python create_inference_text.py --exp-dir ${exp_dir}
+```
+
+```
+python3 bin/infer.py --output-dir infer/demos     --checkpoint=${exp_dir}/best-valid-loss.pt   --text-prompts ""  --audio-prompts "" --text atyp_to_atyp_inference_list.txt
+```
+
+```
+cd VallE/tts-obj-metrics
+python evaluate.py
+```
+
+```
 python3 bin/infer.py --output-dir infer/demos     --checkpoint=${exp_dir}/best-valid-loss.pt     --atypical-audio /home/data1/vall-e.git/VallE/egs/uaspeech/audioSamples/CF02/CF02_B1_C1_M2.wav --text "COMMAND"
 ```

@@ -425,7 +425,7 @@ def create_many_to_one_speaker_pair(
                     # Determine split based on utterance ID
                     for a_rec, a_sup, t_rec, t_sup in zip(a_recs, a_sups, t_recs, t_sups):
                         extracted_id = extract_code_from_id(a_rec.id)
-                        print(a_rec.id)
+                        # print(a_rec.id)
                         if extracted_id in test_codes:
                             split = "test"
                         elif extracted_id in dev_codes:
@@ -655,8 +655,7 @@ def main():
             prep_base_tts(args.uaspeech_path , control_speakers + atypical_speakers, None, "normalized", args.output_dir)
     else:
         # control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
-        atypical_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
-        atypical_speakers = ["CM05"]
+        
         create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir)
         # create_speaker_speaker_pair(args.uaspeech_path, control_speakers, atypical_speakers, None, "normalized", args.output_dir)
 

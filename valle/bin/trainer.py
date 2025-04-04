@@ -86,11 +86,12 @@ def freeze_lower_layers(model: nn.Module, num_layers_to_freeze: int):
                 for param in layer.parameters():
                     param.requires_grad = False
 
-    if hasattr(model, "encoder") and hasattr(model.encoder, "layers"):
-        _freeze(model.encoder.layers)
+    if hasattr(model, "ar_decoder") and hasattr(model.ar_decoder, "layers"):
+        _freeze(model.ar_decoder.layers)
 
-    if hasattr(model, "decoder") and hasattr(model.decoder, "layers"):
-        _freeze(model.decoder.layers)
+    if hasattr(model, "nar_decoder") and hasattr(model.nar_decoder, "layers"):
+        _freeze(model.nar_decoder.layers)
+        
 
 def get_parser():
     parser = argparse.ArgumentParser(
@@ -286,8 +287,9 @@ def get_parser():
 
     parser.add_argument(
         "--voice-conversion",
-        type=str2bool,
-        default=False,
+        type=int,
+        choices=[0,1],
+        default=1,
         help="Indicate if you want to train VALL-E as a TTS or VC",
     )
 
@@ -547,7 +549,7 @@ def compute_loss(
     target_audio_features_lens = batch["target_audio_features_lens"].to(device)
     assert target_audio_features.ndim == 3
 
-    if params.voice_conversion:
+    if params.voice_conversion == 1:
         atypical_audio_features = batch["atypical_audio_features"].to(device)
         atypical_features_lens = batch["atypical_audio_features_lens"].to(device)
 
@@ -939,6 +941,12 @@ def run(rank, world_size, args):
         _model = model.module if isinstance(model, DDP) else model
         freeze_lower_layers(_model, args.freeze_lower_layers)
         logging.info(f"Froze bottom {args.freeze_lower_layers} encoder/decoder layers.")
+
+        print("\n=== Layer Freezing Report ===")
+        for name, param in model.named_parameters():
+            status = "Frozen" if not param.requires_grad else "Trainable"
+            print(f"{name:60} | {status}")
+        print("=============================\n")
     #-----------------------------Model Freezing------------------------------------------------
     with open(f"{params.exp_dir}/model.txt", "w") as f:
         print(model)

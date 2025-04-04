@@ -894,9 +894,14 @@ class VALLE(VALLF):
         max_atypical_len = 0
 
         if many_to_one:
-   
             atypical_audio, atypical_mask = self.extract_atypical_audio(atypical_audio_features, atypical_audio_lens)
             max_atypical_len = atypical_audio_lens.max().item() + 1
+
+            
+            drop_prob = 0.2  # Tuneable: try 0.05 - 0.2
+            mask = torch.rand(atypical_audio.shape[:2], device=atypical_audio.device) > drop_prob
+            mask = mask.unsqueeze(-1).type_as(atypical_audio)
+            atypical_audio = atypical_audio * mask
 
             # Concatenate atypical and typical audio sequences 
             # and update the masking
@@ -989,7 +994,7 @@ class VALLE(VALLF):
             else:
                 logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
             # loss
-            total_loss = F.cross_entropy(logits, targets, reduction=reduction)
+            total_loss = F.cross_entropy(logits, targets, label_smoothing=0.1, reduction=reduction)
 
             metrics["ArTop10Accuracy"] = self.ar_accuracy_metric(
                 logits.detach(), targets
@@ -1052,13 +1057,20 @@ class VALLE(VALLF):
                 src_key_padding_mask=xy_padding_mask,
                 # is_causal=False,
             )
+            # assert prefix_len == max_atypical_len, f"prefix: {prefix_len}, max atypical: {max_atypical_len}"
             xy_dec = xy_dec[:, x_lens.max() + prefix_len:]
             if self.prefix_mode == 4:
                 prefix_len = 0  # reset for Top10Accuracy metric
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
                 0, 2, 1
             )
-
+            assert not torch.isnan(logits).any(), "NaNs in logits!"
+            assert not torch.isinf(logits).any(), "Infs in logits!"
+            print(f"logits shape: {logits.shape}")
+            print(f"logits min: {logits.min().item()}, max: {logits.max().item()}, mean: {logits.mean().item()}")
+            print(f"targets shape: {targets.shape}")
+            print(f"targets min: {targets.min().item()}, max: {targets.max().item()}")
+            print(f"unique targets: {torch.unique(targets)}")
             softmax_output = F.softmax(logits, dim=1)  
             predicted_indices = torch.argmax(softmax_output, dim=1)
             # print(f"X shape: {x.shape}")

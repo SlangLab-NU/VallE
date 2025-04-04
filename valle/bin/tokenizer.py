@@ -396,25 +396,25 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
 
             mismatch = []
             # Assign the computed target features to the source
+            tgt_lookup = {
+                remove_trailing_id_suffix(c.id).replace(get_speaker(c.id), ''): c
+                for c in tgt_cuts
+            }
+
             for src_cut in src_cuts:
-                tgt_cut = next(tgt_cuts_cycle)
+                src_id = remove_trailing_id_suffix(src_cut.id)
+                src_key = src_id.replace(get_speaker(src_id), '')
 
-                temp_src_id = remove_trailing_id_suffix(src_cut.id)
-                temp_tgt_id = remove_trailing_id_suffix(tgt_cut.id)
+                tgt_cut = tgt_lookup.get(src_key, None)
+                if tgt_cut is None:
+                    print(f"Missing target for {src_key}")
+                    mismatch.append(src_key)
+                    continue  
                 
-                temp_src = temp_src_id.replace(get_speaker(temp_src_id), '')
-                temp_tgt = temp_tgt_id.replace(get_speaker(temp_tgt_id), '')                   
-                
-                if temp_src != temp_tgt:
-                    print(f"temp src: {temp_src}")
-                    print(f"temp tgt: {temp_tgt}")
-                    mismatch.append(temp_src)
-                    continue
-                else:
-                    src_cut.id = temp_src_id
-                    tgt_cut.id = temp_tgt_id
-                    src_cut.target_recording = tgt_cut
-
+                src_cut.id = src_id
+                tgt_cut.id = remove_trailing_id_suffix(tgt_cut.id)
+                src_cut.target_recording = tgt_cut
+            print(mismatch)
         if args.text_extractor:
             extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer)
     
