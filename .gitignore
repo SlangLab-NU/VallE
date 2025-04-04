@@ -16,6 +16,7 @@ egs/uaspeech/download/*
 data/tokenized/unique_text_tokens.k2symbols
 egs/uaspeech/uaspeechForCluster.zip
 egs/libritts/*
+egs/uaspeech/finetune*
 egs/uaspeech/aanchan*
 egs/uaspeech/bug*
 egs/uaspeech/og_valle*
@@ -23,7 +24,7 @@ egs/uaspeech/uaspeechTrainStage1/*
 egs/uaspeech/uaspeechTrainStage2/*
 egs/uaspeech/tensorboard_stage1/*
 egs/uaspeech/tensorboard_stage2/*
-egs/uaspeech/uaspeech/*
+egs/uaspeech/uaspeech*
 egs/uaspeech/linguistic_input*
 egs/uaspeech/uaspeech_run*
 egs/uaspeech/typical_test*
@@ -37,3 +38,11 @@ egs/uaspeech/atypical_speakers_testH5.json
 egs/uaspeech/audioSamples/*
 egs/uaspeech/#output_exp.log#
 egs/uaspeech/output_exp.log
+egs/uaspeech/atypical_speakers_trainH5.json
+.gitignore
+egs/uaspeech/typical_speakers_trainH5.json
+egs/uaspeech/atyp_to_atyp_inference_list.txt
+.gitignore
+egs/uaspeech/atyp_to_typ_inference_list.txt
+egs/uaspeech/inference_text.log
+egs/uaspeech/test_dev_codes.txt
