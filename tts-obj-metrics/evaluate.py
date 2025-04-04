@@ -64,53 +64,88 @@ if __name__=="__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--atyp_to_atyp", type=str, default= '../egs/uaspeech/atyp_to_atyp_inference_list.txt')
     parser.add_argument("--atyp_to_typ", type=str, default= '../egs/uaspeech/atyp_to_typ_inference_list.txt')
+    parser.add_argument("--typical-only-mode", type=int, choices=[0,1], help="Run evaluation assuming input is typical speaker inference (typical-to-typical).")
     args = parser.parse_args()
     
     config = GlobalConfig()
     pitch_algorithm = 'yin'  # or 'dio'
 
-    # Load atyp_to_atyp for WER/CER/SECS
-    atyp_src_txt, atyp_src_paths, _, synth_paths = process_file(args.atyp_to_atyp)
-    x_synths, _ = load_audio_paths(synth_paths)
-    x_atyp_gts, _ = load_audio_paths(atyp_src_paths)
-    synths_tensor = [torch.Tensor(x) for x in x_synths]
-    atyp_gts_tensor = [torch.Tensor(x) for x in x_atyp_gts]
+    if args.typical_only_mode == 1:
+        # Just use one file for both GT and synth paths
+        src_txts, gt_paths, _, synth_paths = process_file(args.atyp_to_atyp)
+        x_gt, _ = load_audio_paths(gt_paths)
+        x_synth, _ = load_audio_paths(synth_paths)
+        gt_tensor = [torch.Tensor(x) for x in x_gt]
+        synth_tensor = [torch.Tensor(x) for x in x_synth]
 
-    # Load atyp_to_typ for DTW/MCD/MSD
-    _, _, _, typ_target_paths = process_file(args.atyp_to_typ)
-    x_typ_gts, _ = load_audio_paths(typ_target_paths)
-    typ_gts_tensor = [torch.Tensor(x) for x in x_typ_gts]
+        pitch_gt = [torch.Tensor(eval(pitch_algorithm)(x, config)['pitches']).unsqueeze(1) for x in x_gt]
+        pitch_synth = [torch.Tensor(eval(pitch_algorithm)(x, config)['pitches']).unsqueeze(1) for x in x_synth]
 
-    typ_gts_pitch = [torch.Tensor(eval(pitch_algorithm)(x, config)['pitches']).unsqueeze(1) for x in x_typ_gts]
-    synths_pitch = [torch.Tensor(eval(pitch_algorithm)(x, config)['pitches']).unsqueeze(1) for x in x_synths]
+        # Filter valid
+        valid = [
+            (gt, synth, gt_p, synth_p)
+            for gt, synth, gt_p, synth_p in zip(gt_tensor, synth_tensor, pitch_gt, pitch_synth)
+            if gt.shape[0] > 0 and synth.shape[0] > 0 and gt_p.shape[0] > 0 and synth_p.shape[0] > 0
+        ]
+        if not valid:
+            raise ValueError("No valid pairs found for evaluation.")
+        gt_tensor, synth_tensor, pitch_gt, pitch_synth = zip(*valid)
 
-    # Filter invalid pairs. Some models may produce silent output
-    valid = [
-        (typ, synth, typ_pitch, synth_pitch)
-        for typ, synth, typ_pitch, synth_pitch in zip(typ_gts_tensor, synths_tensor, typ_gts_pitch, synths_pitch)
-        if typ.shape[0] > 0 and synth.shape[0] > 0 and typ_pitch.shape[0] > 0 and synth_pitch.shape[0] > 0
-    ]
-    if not valid:
-        raise ValueError("No valid pairs found for DTW/MCD/MSD.")
-    
-    typ_gts_tensor, synths_tensor, typ_gts_pitch, synths_pitch = zip(*valid)
+        # Run metrics
+        DTW = {v: k for v, k in enumerate(batch_dynamic_time_warping(pitch_gt, pitch_synth, config.dist_fn, config.norm_align_type)['norm_align_costs'])}
+        MCD = {v: k for v, k in enumerate(batch_mel_cepstral_distortion(gt_tensor, synth_tensor, config))}
+        WER, CER, hyp_sent = calculate_batched_wer(src_txts, synth_tensor)
+        SECS = calculate_speaker_similarity(gt_tensor, synth_tensor)
 
-    DTW = {v: k for v, k in enumerate(batch_dynamic_time_warping(typ_gts_pitch, synths_pitch, config.dist_fn, config.norm_align_type)['norm_align_costs'])}
-    MSD = {v: k for v, k in enumerate(batch_mel_spectral_distortion(typ_gts_tensor, synths_tensor, config))}
-    MCD = {v: k for v, k in enumerate(batch_mel_cepstral_distortion(typ_gts_tensor, synths_tensor, config))}
+        print("==== Evaluation (Typical-to-Typical) ====")
+        print(f"DTW mean ± std: {np.mean(list(DTW.values())):.3f} ± {np.std(list(DTW.values())):.3f}")
+        print(f"MCD mean ± std: {np.mean(list(MCD.values())):.3f} ± {np.std(list(MCD.values())):.3f}")
+        print(f"CER: {CER:.3f}")
+        print(f"SECS: {SECS:.3f}")
+        print(f"HYP Sentences: {hyp_sent}")
+    else:
+        # Load atyp_to_atyp for WER/CER/SECS
+        atyp_src_txt, atyp_src_paths, _, synth_paths = process_file(args.atyp_to_atyp)
+        x_synths, _ = load_audio_paths(synth_paths)
+        x_atyp_gts, _ = load_audio_paths(atyp_src_paths)
+        synths_tensor = [torch.Tensor(x) for x in x_synths]
+        atyp_gts_tensor = [torch.Tensor(x) for x in x_atyp_gts]
 
-    SECS = calculate_speaker_similarity(atyp_gts_tensor, synths_tensor)  # <- always atypical based
-    WER, CER, hyp_sent = calculate_batched_wer(atyp_src_txt, synths_tensor)
+        # Load atyp_to_typ for DTW/MCD/MSD
+        _, _, _, typ_target_paths = process_file(args.atyp_to_typ)
+        x_typ_gts, _ = load_audio_paths(typ_target_paths)
+        typ_gts_tensor = [torch.Tensor(x) for x in x_typ_gts]
 
-    print("==== Evaluation Results ====")
-    print(f"DTW mean ± std: {np.mean(list(DTW.values())):.3f} ± {np.std(list(DTW.values())):.3f}")
-    print(f"MCD mean ± std: {np.mean(list(MCD.values())):.3f} ± {np.std(list(MCD.values())):.3f}")
-    # print(f"MSD mean ± std: {np.mean(list(MSD.values())):.3f} ± {np.std(list(MSD.values())):.3f}")
+        typ_gts_pitch = [torch.Tensor(eval(pitch_algorithm)(x, config)['pitches']).unsqueeze(1) for x in x_typ_gts]
+        synths_pitch = [torch.Tensor(eval(pitch_algorithm)(x, config)['pitches']).unsqueeze(1) for x in x_synths]
 
-    # print(f"WER: {WER:.3f}")
-    print(f"CER: {CER:.3f}")
-    print(f"SECS: {SECS:.3f}")
-    print(f"HYP Sentences: {hyp_sent}")
+        # Filter invalid pairs. Some models may produce silent output
+        valid = [
+            (typ, synth, typ_pitch, synth_pitch)
+            for typ, synth, typ_pitch, synth_pitch in zip(typ_gts_tensor, synths_tensor, typ_gts_pitch, synths_pitch)
+            if typ.shape[0] > 0 and synth.shape[0] > 0 and typ_pitch.shape[0] > 0 and synth_pitch.shape[0] > 0
+        ]
+        if not valid:
+            raise ValueError("No valid pairs found for DTW/MCD/MSD.")
+        
+        typ_gts_tensor, synths_tensor, typ_gts_pitch, synths_pitch = zip(*valid)
+
+        DTW = {v: k for v, k in enumerate(batch_dynamic_time_warping(typ_gts_pitch, synths_pitch, config.dist_fn, config.norm_align_type)['norm_align_costs'])}
+        MSD = {v: k for v, k in enumerate(batch_mel_spectral_distortion(typ_gts_tensor, synths_tensor, config))}
+        MCD = {v: k for v, k in enumerate(batch_mel_cepstral_distortion(typ_gts_tensor, synths_tensor, config))}
+
+        SECS = calculate_speaker_similarity(atyp_gts_tensor, synths_tensor)  # <- always atypical based
+        WER, CER, hyp_sent = calculate_batched_wer(atyp_src_txt, synths_tensor)
+
+        print("==== Evaluation Results ====")
+        print(f"DTW mean ± std: {np.mean(list(DTW.values())):.3f} ± {np.std(list(DTW.values())):.3f}")
+        print(f"MCD mean ± std: {np.mean(list(MCD.values())):.3f} ± {np.std(list(MCD.values())):.3f}")
+        # print(f"MSD mean ± std: {np.mean(list(MSD.values())):.3f} ± {np.std(list(MSD.values())):.3f}")
+
+        # print(f"WER: {WER:.3f}")
+        print(f"CER: {CER:.3f}")
+        print(f"SECS: {SECS:.3f}")
+        print(f"HYP Sentences: {hyp_sent}")
 
     # (source_transcripts,
     #  source_paths,

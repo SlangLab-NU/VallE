@@ -4,7 +4,7 @@ import torch
 import torch.nn.functional as F
 import re
 
-def do_batch_asr(audio_tensors, model_size='small', batch_size=16):
+def do_batch_asr(audio_tensors, model_size='large', batch_size=16):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     results = []
     model = whisper.load_model(model_size)
