@@ -1064,13 +1064,12 @@ class VALLE(VALLF):
             logits = self.nar_predict_layers[nar_stage - 1](xy_dec).permute(
                 0, 2, 1
             )
-            assert not torch.isnan(logits).any(), "NaNs in logits!"
-            assert not torch.isinf(logits).any(), "Infs in logits!"
-            print(f"logits shape: {logits.shape}")
-            print(f"logits min: {logits.min().item()}, max: {logits.max().item()}, mean: {logits.mean().item()}")
-            print(f"targets shape: {targets.shape}")
-            print(f"targets min: {targets.min().item()}, max: {targets.max().item()}")
-            print(f"unique targets: {torch.unique(targets)}")
+        
+            # print(f"logits shape: {logits.shape}")
+            # print(f"logits min: {logits.min().item()}, max: {logits.max().item()}, mean: {logits.mean().item()}")
+            # print(f"targets shape: {targets.shape}")
+            # print(f"targets min: {targets.min().item()}, max: {targets.max().item()}")
+            # print(f"unique targets: {torch.unique(targets)}")
             softmax_output = F.softmax(logits, dim=1)  
             predicted_indices = torch.argmax(softmax_output, dim=1)
             # print(f"X shape: {x.shape}")
