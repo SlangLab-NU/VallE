@@ -994,7 +994,7 @@ class VALLE(VALLF):
             else:
                 logits = self.ar_predict_layer(xy_dec[:, x_len:]).permute(0, 2, 1)
             # loss
-            total_loss = F.cross_entropy(logits, targets, label_smoothing=0.1, reduction=reduction)
+            total_loss = F.cross_entropy(logits, targets, reduction=reduction)
 
             metrics["ArTop10Accuracy"] = self.ar_accuracy_metric(
                 logits.detach(), targets
