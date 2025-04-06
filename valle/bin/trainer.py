@@ -708,6 +708,13 @@ def train_one_epoch(
                     batch=batch,
                     is_training=True,
                 )
+            l2_lambda = 1e-4  # Adjust strength
+            l2_norm = sum(
+                (p ** 2).sum()
+                for name, p in model.named_parameters()
+                if p.requires_grad and "ar_decoder.layers.3" in name
+            )
+            loss = loss + l2_lambda * l2_norm
             # summary stats
             tot_loss = (
                 tot_loss * (1 - 1 / params.reset_interval)
@@ -938,6 +945,11 @@ def run(rank, world_size, args):
     model = get_model(params)
     #-----------------------------Model Freezing------------------------------------------------
     if args.freeze_lower_layers > 0:
+        # for name, param in model.named_parameters():
+        #     if "output_proj" in name:
+        #         param.requires_grad = True
+        #     else:
+        #         param.requires_grad = False
         _model = model.module if isinstance(model, DDP) else model
         freeze_lower_layers(_model, args.freeze_lower_layers)
         logging.info(f"Froze bottom {args.freeze_lower_layers} encoder/decoder layers.")
