@@ -953,20 +953,20 @@ def run(rank, world_size, args):
         _model = model.module if isinstance(model, DDP) else model
         freeze_lower_layers(_model, args.freeze_lower_layers)
         logging.info(f"Froze bottom {args.freeze_lower_layers} encoder/decoder layers.")
-        # embedding_keywords = [
-        #     "text_embedding.word_embeddings.weight",
-        #     "audio_embedding.word_embeddings.weight",
-        #     "text_position.alpha",
-        #     "audio_position.alpha",
-        #     "nar_audio_embeddings",
-        #     "nar_text_embedding.word_embeddings.weight",
-        #     "nar_text_position.alpha",
-        #     "nar_audio_position.alpha",
-        # ]
+        embedding_keywords = [
+            "text_embedding.word_embeddings.weight",
+            "audio_embedding.word_embeddings.weight",
+            "text_position.alpha",
+            "audio_position.alpha",
+            "nar_audio_embeddings",
+            "nar_text_embedding.word_embeddings.weight",
+            "nar_text_position.alpha",
+            "nar_audio_position.alpha",
+        ]
 
-        # for name, param in model.named_parameters():
-        #     if any(kw in name for kw in embedding_keywords):
-        #         param.requires_grad = False
+        for name, param in model.named_parameters():
+            if any(kw in name for kw in embedding_keywords):
+                param.requires_grad = False
         print("\n=== Layer Freezing Report ===")
         for name, param in model.named_parameters():
             status = "Frozen" if not param.requires_grad else "Trainable"
