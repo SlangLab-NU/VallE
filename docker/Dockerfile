@@ -19,8 +19,8 @@ ENV PYTHONPATH=/workspace/icefall:$PYTHONPATH
 RUN cp /opt/conda/lib/libpython3.10.so.1.0 /usr/lib/x86_64-linux-gnu/
 
 WORKDIR /workspace
-RUN git clone https://github.com/lifeiteng/vall-e.git && \
-    cd vall-e && \
+RUN git clone -b refactor-valle https://github.com/SlangLab-NU/VallE.git && \
+    cd VallE && \
     pip install -e .
 
 WORKDIR /workspace/vall-e
