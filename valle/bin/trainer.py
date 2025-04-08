@@ -193,6 +193,12 @@ def get_parser():
     )
 
     parser.add_argument(
+    "--reset-lr",
+    action="store_true",
+    help="If set, ignore saved scheduler state and use --base-lr instead.",
+    )
+
+    parser.add_argument(
         "--save-every-n",
         type=int,
         default=10000,
@@ -953,20 +959,20 @@ def run(rank, world_size, args):
         _model = model.module if isinstance(model, DDP) else model
         freeze_lower_layers(_model, args.freeze_lower_layers)
         logging.info(f"Froze bottom {args.freeze_lower_layers} encoder/decoder layers.")
-        embedding_keywords = [
-            "text_embedding.word_embeddings.weight",
-            "audio_embedding.word_embeddings.weight",
-            "text_position.alpha",
-            "audio_position.alpha",
-            "nar_audio_embeddings",
-            "nar_text_embedding.word_embeddings.weight",
-            "nar_text_position.alpha",
-            "nar_audio_position.alpha",
-        ]
+        # embedding_keywords = [
+        #     "text_embedding.word_embeddings.weight",
+        #     "audio_embedding.word_embeddings.weight",
+        #     "text_position.alpha",
+        #     "audio_position.alpha",
+        #     "nar_audio_embeddings",
+        #     "nar_text_embedding.word_embeddings.weight",
+        #     "nar_text_position.alpha",
+        #     "nar_audio_position.alpha",
+        # ]
 
-        for name, param in model.named_parameters():
-            if any(kw in name for kw in embedding_keywords):
-                param.requires_grad = False
+        # for name, param in model.named_parameters():
+        #     if any(kw in name for kw in embedding_keywords):
+        #         param.requires_grad = False
         print("\n=== Layer Freezing Report ===")
         for name, param in model.named_parameters():
             status = "Frozen" if not param.requires_grad else "Trainable"
@@ -1083,6 +1089,7 @@ def run(rank, world_size, args):
         checkpoints
         and "scheduler" in checkpoints
         and checkpoints["scheduler"] is not None
+        and not getattr(args, "reset_lr", False)
     ):
         logging.info("Loading scheduler state dict")
         scheduler.load_state_dict(checkpoints["scheduler"])
@@ -1093,6 +1100,7 @@ def run(rank, world_size, args):
     if params.start_batch > 0 and checkpoints and "sampler" in checkpoints:
         sampler_state_dict = checkpoints["sampler"]
     else:
+        logging.info("Skipping scheduler state dict; using base_lr from args")
         sampler_state_dict = None
 
     dataset = TtsDataModule(args)

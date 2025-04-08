@@ -104,6 +104,7 @@ if __name__=="__main__":
         print(f"SECS: {SECS:.3f}")
         print(f"HYP Sentences: {hyp_sent}")
     else:
+        print("Testing Atypical Speakers")
         # Load atyp_to_atyp for WER/CER/SECS
         atyp_src_txt, atyp_src_paths, _, synth_paths = process_file(args.atyp_to_atyp)
         x_synths, _ = load_audio_paths(synth_paths)
