@@ -218,19 +218,28 @@ def process_utterances(
     """
     Process matched utterances and create Recording and SupervisionSegment objects.
     """
+    args = get_args()
     atypical_recordings, atypical_supervisions = [], []
     typical_recordings, typical_supervisions = [], []
 
     for (atypical_key, atypical_value), (typical_key, typical_value) in tqdm(zip(atypical_utterances.items(), typical_utterances.items()), desc="Processing Utterances"):
         try:
-            atypical_recording_id = f"{atypical_value}_{atypical_key}"                       
+            
+            if args.prep_tts == 0:
+                atypical_recording_id = f"{atypical_value}_{atypical_key[:-2]}"
+                typical_recording_id = f"{typical_value}_{typical_key[:-2]}"
+                # print(atypical_recording_id)
+            else:
+                atypical_recording_id = f"{atypical_value}_{atypical_key}" 
+                typical_recording_id = f"{typical_value}_{typical_key}"
+
             atypical_audio_path = corpus_audio_dir / part / atypical_speaker / f"{atypical_key}.wav"                            
             atypical_recording = Recording.from_file(atypical_audio_path, atypical_recording_id)
 
-            typical_recording_id = f"{typical_value}_{typical_key}"
+            
             typical_audio_path = corpus_audio_dir / part / typical_speaker / f"{typical_key}.wav"
             typical_recording = Recording.from_file(typical_audio_path, typical_recording_id)
-
+          
             atypical_segment = SupervisionSegment(
                 id=atypical_recording_id,
                 recording_id=atypical_recording_id,
@@ -417,22 +426,24 @@ def create_many_to_one_speaker_pair(
                     assert len(typical_filtered) == len(atypical_filtered), (
                         f"Length Mismatch... Typical: {len(typical_filtered)} and Atypical: {len(atypical_filtered)}"
                     )
-
                     # Process the utterances
                     a_recs, a_sups, t_recs, t_sups = process_utterances(
                         atypical_speaker, typical_speaker, atypical_filtered, typical_filtered, corpus_audio_dir, part
                     )
                     # Determine split based on utterance ID
+                    a_rec_set = set()
                     for a_rec, a_sup, t_rec, t_sup in zip(a_recs, a_sups, t_recs, t_sups):
                         extracted_id = extract_code_from_id(a_rec.id)
-                        # print(a_rec.id)
                         if extracted_id in test_codes:
                             split = "test"
                         elif extracted_id in dev_codes:
                             split = "dev"
                         else:
                             split = "train"
-
+                        if a_rec.id in a_rec_set:
+                            continue
+                        else:
+                            a_rec_set.add(a_rec.id)
                         # Store in correct set
                         recording_sets[f"atypical_recording_{split}_set"].append(a_rec)
                         supervision_sets[f"atypical_supervision_{split}_set"].append(a_sup)
