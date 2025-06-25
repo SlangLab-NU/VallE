@@ -18,6 +18,8 @@ egs/uaspeech/uaspeechForCluster.zip
 egs/libritts/*
 egs/uaspeech/aanchan*
 egs/uaspeech/libritts*
+egs/uaspeech/Finetune*
+egs/uaspeech/UASpeech*
 egs/uaspeech/test*
 egs/uaspeech/bug*
 egs/uaspeech/og_valle*
