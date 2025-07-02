@@ -102,7 +102,9 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   if [ ! -e data/manifests/.uaspeech.done ]; then
     # If lhotse has the prepare_uaspeech in its library try line below
     # lhotse prepare uaspeech $dl_dir/UASpeech data/manifests
-    python uaspeech.py --uaspeech-path /home/data1/data/UASpeech \
+    # cluster (wherever UASpeech is mounted): /scratch/lewis.jor/UASpeech
+    # polaris: /home/data1/data/UASpeech
+    python uaspeech.py --uaspeech-path /scratch/lewis.jor/UASpeech \
           --prep-tts $prep_tts --control-tts $control_tts \
           --atypical-tts $atypical_tts --output-dir data/manifests
     touch data/manifests/.uaspeech.done

@@ -30,6 +30,13 @@ singularity_image=concat_speakers_on_dev_set.sif
 echo "Running data preparation"
 export SINGULARITYENV_PYTHONPATH="/workspace/icefall:$PYTHONPATH"
 
+echo "Checking CUDA availability inside the container:"
+singularity exec --nv \
+  --bind $valle_root:$valle_root \
+  --bind /work/van-speech-nlp/UASpeech:/scratch/lewis.jor/UASpeech \
+  $singularity_image \
+  python3 -c "import torch; print('CUDA available:', torch.cuda.is_available()); print('Device count:', torch.cuda.device_count()); print('Device name:', torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'N/A')"
+
 # Run training script within Singularity container
 singularity exec --nv \
   --bind $valle_root:$valle_root \
