@@ -43,3 +43,6 @@ egs/uaspeech/typical_speakers_trainH5.json
 egs/uaspeech/new*
 egs/uaspeech/test_dev_codes.txt
 concat_speakers_on_dev_set.sif
+egs/uaspeech/atyp_to_atyp_inference_list.txt
+egs/uaspeech/atyp_to_typ_inference_list.txt
+egs/uaspeech/inference_text.log
