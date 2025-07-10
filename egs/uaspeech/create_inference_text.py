@@ -38,7 +38,7 @@ def get_parser():
         "--atyp-speakers",
         type=str,
         default="very_low",
-        help="Comma-separated list of speakers to perform inference on",
+        help="very_low, low, or medium in quotations",
     )
 
     parser.add_argument(
