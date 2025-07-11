@@ -20,7 +20,7 @@ module load singularity
 # Set up environment variables
 valle_root=/scratch/lewis.jor/VallE
 cd $valle_root/egs/libritts
-singularity_image=/work/van-speech-nlp/valle_container/valle.sif
+singularity_image=/scratch/lewis.jor/VallE/concat_speakers_on_dev_set.sif
 
 export SINGULARITYENV_PYTHONPATH="/workspace/icefall:$PYTHONPATH"
 
