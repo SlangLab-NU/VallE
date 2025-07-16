@@ -30,7 +30,7 @@ from valle.modules.transformer import (
     TransformerEncoder,
     TransformerEncoderLayer,
 )
-
+from valle.core import ValleCore
 from .macros import NUM_AUDIO_TOKENS, NUM_TEXT_TOKENS
 from .visualizer import visualize
 
@@ -736,7 +736,7 @@ class VALLF(nn.Module):
         visualize(predicts, batch, output_dir, limit=limit)
 
 
-class VALLE(VALLF):
+class VALLE(ValleCore):
     """It implements https://arxiv.org/abs/2301.02111
     "Neural Codec Language Models are Zero-Shot Text to Speech Synthesizers"
     """

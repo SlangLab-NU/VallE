@@ -10,7 +10,6 @@ from .macros import (
     NUM_TEXT_TOKENS,
     SPEAKER_EMBEDDING_DIM,
 )
-from .transformer import Transformer
 from .valle import VALLE, VALLF
 from .visualizer import visualize
 
@@ -20,7 +19,7 @@ def add_model_arguments(parser: argparse.ArgumentParser):
         "--model-name",
         type=str,
         default="VALL-E",
-        help="VALL-E, VALL-F, Transformer.",
+        help="VALL-E, VALL-F",
     )
     parser.add_argument(
         "--decoder-dim",
@@ -86,14 +85,6 @@ def add_model_arguments(parser: argparse.ArgumentParser):
         help="Number of Audio/Semantic quantization layers.",
     )
 
-    # Transformer
-    parser.add_argument(
-        "--scaling-xformers",
-        type=str2bool,
-        default=False,
-        help="Apply Reworked Conformer scaling on Transformers.",
-    )
-
 
 def get_model(params: AttributeDict) -> nn.Module:
     if params.model_name.lower() in ["vall-f", "vallf"]:
@@ -121,16 +112,6 @@ def get_model(params: AttributeDict) -> nn.Module:
             nar_scale_factor=params.scale_factor,
             prepend_bos=params.prepend_bos,
             num_quantizers=params.num_quantizers,
-        )
-    else:
-        assert params.model_name in ["Transformer"]
-        model = Transformer(
-            params.decoder_dim,
-            params.nhead,
-            params.num_decoder_layers,
-            norm_first=params.norm_first,
-            add_prenet=params.add_prenet,
-            scaling_xformers=params.scaling_xformers,
         )
 
     return model
