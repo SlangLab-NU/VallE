@@ -3,10 +3,26 @@ from typing import Iterator, Tuple, Union, Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torchaudio.models.utils import make_pad_mask
+from icefall.utils import make_pad_mask
+from torchmetrics.classification import MulticlassAccuracy
 
-NUM_AUDIO_TOKENS = 1024
-NUM_TEXT_TOKENS  = 256
+from valle.data.input_strategies import PromptedFeatures
+from valle.modules.embedding import SinePositionalEmbedding, TokenEmbedding
+from valle.modules.transformer import (
+    AdaptiveLayerNorm,
+    LayerNorm,
+    TransformerDecoderLayer,
+    TransformerEncoder,
+    TransformerEncoderLayer,
+)
+
+from .macros import NUM_AUDIO_TOKENS, NUM_TEXT_TOKENS
+
+class Transpose(nn.Identity):
+    """(N, T, D) -> (N, D, T)"""
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
+        return input.transpose(1, 2)
 
 class ValleCore(nn.Module):
     """
@@ -22,7 +38,6 @@ class ValleCore(nn.Module):
         d_model: int,
         nhead: int,
         num_layers: int,
-        *,
         norm_first: bool = True,
         add_prenet: bool = False,
         decoder_cls=nn.TransformerEncoder,
@@ -35,56 +50,127 @@ class ValleCore(nn.Module):
     ):
         super().__init__()
     
-    # -------- Hyperparameters ------------
+        # -------- Hyperparameters ------------
 
-    self.rng = random.Random(0)
-    self.num_heads = nhead
-    self.prefix_mode = prefix_mode
-    self.num_quantizers = num_quantizers
-    self.ar_audio_prepend_bos = prepend_bos
+        self.rng = random.Random(0)
+        self.num_heads = nhead
+        self.prefix_mode = prefix_mode
+        self.num_quantizers = num_quantizers
+        self.ar_audio_prepend_bos = prepend_bos
 
-    # ------ Embeddings and prenets --------
+        # ------ Embeddings --------
 
-    nar_d_model = int(d_model * nar_scale_factor)
+        nar_d_model = int(d_model * nar_scale_factor)
 
-    self.ar_text_embedding = TokenEmbedding(d_model, NUM_TEXT_TOKENS)  # W_x
-    self.nar_text_embedding = TokenEmbedding(nar_d_model, NUM_TEXT_TOKENS)
+        self.ar_text_embedding = TokenEmbedding(d_model, NUM_TEXT_TOKENS)  # W_x
+        self.nar_text_embedding = TokenEmbedding(nar_d_model, NUM_TEXT_TOKENS)
 
-    # ID NUM_AUDIO_TOKENS     -> PAD
-    # ID NUM_AUDIO_TOKENS + 1 -> BOS
-    self.ar_audio_prepend_bos = prepend_bos
-    self.ar_audio_embedding = TokenEmbedding(
-        d_model, NUM_AUDIO_TOKENS + 1 + int(prepend_bos)
-    )
+        # ----- Build AR Decoder ---------
 
-    self.ar_text_prenet, self.ar_audio_prenet = build_prenets(
-            d_model, add_prenet
+        # ID NUM_AUDIO_TOKENS     -> PAD
+        # ID NUM_AUDIO_TOKENS + 1 -> BOS
+        self.ar_audio_embedding = TokenEmbedding(
+            d_model, NUM_AUDIO_TOKENS + 1 + int(prepend_bos)
         )
-    self.nar_text_prenet, self.nar_audio_prenet = build_prenets(
-        nar_d_model, add_prenet
-    )
+        
+        self.ar_text_prenet, self.ar_audio_prenet = build_prenets(
+                d_model, add_prenet
+        )
 
-    # ----- Positional Embeddings ---------
+        self.ar_text_position  = SinePositionalEmbedding(d_model,  dropout=0.1, alpha=True)
+        self.ar_audio_position = SinePositionalEmbedding(d_model,  dropout=0.1, alpha=True)
 
-    self.ar_text_position  = SinePositionalEmbedding(d_model,  dropout=0.1, alpha=True)
-    self.ar_audio_position = SinePositionalEmbedding(d_model,  dropout=0.1, alpha=True)
-    self.nar_text_position = SinePositionalEmbedding(nar_d_model, dropout=0.0, alpha=False)
-    self.nar_audio_position= SinePositionalEmbedding(nar_d_model, dropout=0.1, alpha=False)
-
-    # --------- Decoder Stacks ------------
-
-    self.ar_decoder  = decoder_cls(
+        self.ar_decoder = decoder_cls(
             decoder_layer_cls(
-                d_model, nhead, dim_feedforward=d_model * 4,
-                batch_first=True, dropout=0.1, norm_first=norm_first),
+                d_model,
+                nhead,
+                dim_feedforward=d_model * 4,
+                dropout=0.1,
+                batch_first=True,
+                norm_first=norm_first,
+            ),
             num_layers=num_layers,
-            norm=nn.LayerNorm(d_model) if norm_first else None,
+            norm=LayerNorm(d_model) if norm_first else None,
         )
+        
         self.ar_predict_layer = nn.Linear(d_model, NUM_AUDIO_TOKENS + 1, bias=False)
 
+        self.ar_accuracy_metric = MulticlassAccuracy(
+            NUM_AUDIO_TOKENS + 1,
+            top_k=10,
+            average="micro",
+            multidim_average="global",
+            ignore_index=NUM_AUDIO_TOKENS,
+        )
+
+        # -------- NAR Decoder -----------
+
+        assert num_quantizers >= 1
         if num_quantizers > 1:
-            self._init_nar_path(nar_d_model, nhead, num_layers, norm_first,
-                                nar_scale_factor, share_embedding)
+            self.nar_audio_embeddings = nn.ModuleList(
+                [TokenEmbedding(nar_d_model, NUM_AUDIO_TOKENS + 1)]
+                + [
+                    TokenEmbedding(nar_d_model, NUM_AUDIO_TOKENS)
+                    for i in range(num_quantizers - 1)
+                ]
+            )  # W_a
+
+            self.nar_text_prenet, self.nar_audio_prenet = build_prenets(
+                    nar_d_model, add_prenet
+            )
+      
+            self.nar_text_position = SinePositionalEmbedding(nar_d_model, dropout=0.0, alpha=False)
+            self.nar_audio_position= SinePositionalEmbedding(nar_d_model, dropout=0.1, alpha=False)
+
+            self.nar_decoder = decoder_cls(
+                decoder_layer_cls(
+                    nar_d_model,
+                    int(nhead * nar_scale_factor),
+                    dim_feedforward=nar_d_model * 4,
+                    dropout=0.1,
+                    batch_first=True,
+                    norm_first=norm_first,
+                    adaptive_layer_norm=True,
+                ),
+                num_layers=int(num_layers * nar_scale_factor),
+                norm=AdaptiveLayerNorm(
+                    nar_d_model, norm=nn.LayerNorm(nar_d_model)
+                )
+                if norm_first
+                else None,
+            )
+            self.nar_predict_layers = nn.ModuleList(
+                [
+                    nn.Linear(nar_d_model, NUM_AUDIO_TOKENS, bias=False)
+                    for i in range(num_quantizers - 1)
+                ]
+            )
+            self.nar_stage_embeddings = nn.ModuleList(
+                [
+                    TokenEmbedding(nar_d_model, 1)
+                    for i in range(num_quantizers - 1)
+                ]
+            )
+
+            if share_embedding:
+                # We share the parameters of the output projection layer with the parameters of the acoustic embedding Wa
+                # NOTE(Feiteng): In the experiment, this undermines accuracy
+                # self.ar_predict_layer.weight = self.ar_audio_embedding.weight
+
+                # We also share the parameters of the acoustic embedding layer and the output prediction layer,
+                # which means the weights of the j-th prediction layer are the same as the (j + 1)-th acoustic embedding layer.
+                for j in range(0, num_quantizers - 2):
+                    self.nar_predict_layers[
+                        j
+                    ].weight = self.nar_audio_embeddings[j + 2].weight
+
+            self.nar_accuracy_metric = MulticlassAccuracy(
+                NUM_AUDIO_TOKENS + 1,
+                top_k=10,
+                average="micro",
+                multidim_average="global",
+                ignore_index=NUM_AUDIO_TOKENS,
+            )
 
     # --------- Helper Methods ------------
 

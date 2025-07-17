@@ -10,7 +10,7 @@ from .macros import (
     NUM_TEXT_TOKENS,
     SPEAKER_EMBEDDING_DIM,
 )
-from .valle import VALLE, VALLF
+from .valle import VALLE
 from .visualizer import visualize
 
 
@@ -19,7 +19,7 @@ def add_model_arguments(parser: argparse.ArgumentParser):
         "--model-name",
         type=str,
         default="VALL-E",
-        help="VALL-E, VALL-F",
+        help="VALL-E",
     )
     parser.add_argument(
         "--decoder-dim",
@@ -87,20 +87,7 @@ def add_model_arguments(parser: argparse.ArgumentParser):
 
 
 def get_model(params: AttributeDict) -> nn.Module:
-    if params.model_name.lower() in ["vall-f", "vallf"]:
-        model = VALLF(
-            params.decoder_dim,
-            params.nhead,
-            params.num_decoder_layers,
-            norm_first=params.norm_first,
-            add_prenet=params.add_prenet,
-            prefix_mode=params.prefix_mode,
-            share_embedding=params.share_embedding,
-            nar_scale_factor=params.scale_factor,
-            prepend_bos=params.prepend_bos,
-            num_quantizers=params.num_quantizers,
-        )
-    elif params.model_name.lower() in ["vall-e", "valle"]:
+    if params.model_name.lower() in ["vall-e", "valle"]:
         model = VALLE(
             params.decoder_dim,
             params.nhead,
