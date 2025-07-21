@@ -44,7 +44,7 @@ exp_dir=whatever_name_you_like
 Fine tune parameters. For baseline training see main README
 
 ```
-python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.0 --filter-max-duration 14 --train-stage 1       --num-buckets 6 --dtype "float16" --save-every-n 1000 --valid-interval 500       --model-name valle --share-embedding true --norm-first true --add-prenet false       --decoder-dim 1024 --nhead 16 --num-decoder-layers 6 --prefix-mode 0       --base-lr 0.00001 --warmup-steps 1 --average-period 0       --num-epochs 20 --start-epoch 2 --start-batch 0 --accumulate-grad-steps 4  --voice-conversion 1  --reset-lr   --exp-dir ${exp_dir} 
+python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.0 --filter-max-duration 14 --train-stage 1       --num-buckets 6 --dtype "float16" --save-every-n 1000 --valid-interval 500       --model-name valle --share-embedding true --norm-first true --add-prenet false       --decoder-dim 1024 --nhead 16 --num-decoder-layers 6 --prefix-mode 0       --base-lr 0.00001 --warmup-steps 1 --average-period 0       --num-epochs 20 --start-epoch 2 --start-batch 0 --accumulate-grad-steps 4  --voice-conversion 1  --freeze-lower-layers 5 --reset-lr   --exp-dir ${exp_dir} 
 ```
 
 8) copy best valid loss to epoch 2
