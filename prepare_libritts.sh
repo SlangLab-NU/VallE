@@ -22,7 +22,7 @@ valle_root=/scratch/lewis.jor/VallE
 cd $valle_root/egs/libritts
 singularity_image=/scratch/lewis.jor/VallE/concat_speakers_on_dev_set.sif
 
-export SINGULARITYENV_PYTHONPATH="/workspace/icefall:$PYTHONPATH"
+export APPTAINERENV_PYTHONPATH="/workspace/icefall:$PYTHONPATH"
 
 # Run training script within Singularity container
 singularity run --nv --bind $valle_root:$valle_root $singularity_image \

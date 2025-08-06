@@ -4,6 +4,7 @@ path.sh
 exp
 exp*/
 *.pt
+*.sif
 log
 .DS_Store
 .vscode
@@ -46,3 +47,6 @@ concat_speakers_on_dev_set.sif
 egs/uaspeech/atyp_to_atyp_inference_list.txt
 egs/uaspeech/atyp_to_typ_inference_list.txt
 egs/uaspeech/inference_text.log
+my_container.sif
+docker/valle.def
+valle_container.tar
