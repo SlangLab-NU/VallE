@@ -1,4 +1,4 @@
-FROM pytorch/pytorch:1.13.1-cuda11.6-cudnn8-devel
+FROM docker.io/pytorch/pytorch:1.13.1-cuda11.6-cudnn8-devel
 
 RUN apt-get update && \
     apt-get upgrade -y
@@ -10,6 +10,12 @@ RUN pip install https://huggingface.co/csukuangfj/k2/resolve/main/cuda/k2-1.23.4
 
 RUN pip install torchaudio==0.13.1+cu116 --extra-index-url https://download.pytorch.org/whl/cu116
 
+RUN pip install whisper
+
+RUN pip install speechbrain
+
+RUN pip install transformers
+
 WORKDIR /workspace
 RUN git clone https://github.com/k2-fsa/icefall && \
     cd icefall && \
@@ -19,7 +25,7 @@ ENV PYTHONPATH=/workspace/icefall:$PYTHONPATH
 RUN cp /opt/conda/lib/libpython3.10.so.1.0 /usr/lib/x86_64-linux-gnu/
 
 WORKDIR /workspace
-RUN git clone -b concat_speakers_on_dev_set https://github.com/SlangLab-NU/VallE.git && \
+RUN git clone -b dev-new https://github.com/SlangLab-NU/VallE.git && \
     cd VallE && \
     pip install -e .
 

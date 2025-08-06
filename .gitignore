@@ -7,6 +7,7 @@ exp*/
 log
 .DS_Store
 .vscode
+.json
 egs/*/data
 egs/libritts/prompts/*.png
 valle/version.py
@@ -17,6 +18,8 @@ egs/uaspeech/download/*
 data/tokenized/unique_text_tokens.k2symbols
 egs/uaspeech/uaspeechForCluster.zip
 egs/libritts/*
+egs/uaspeech/Fine*
+egs/uaspeech/UASpeech*
 egs/uaspeech/aanchan*
 egs/uaspeech/test*
 egs/uaspeech/bug*
@@ -46,3 +49,5 @@ concat_speakers_on_dev_set.sif
 egs/uaspeech/atyp_to_atyp_inference_list.txt
 egs/uaspeech/atyp_to_typ_inference_list.txt
 egs/uaspeech/inference_text.log
+egs/uaspeech/atypical_speakers_trainH5.json
+docker/valle_container.tar
