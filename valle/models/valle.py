@@ -174,7 +174,7 @@ class VALLE(ValleCore):
         Returns:
           Return the predicted audio code matrix, cross-entropy loss and Top-10 accuracy.
         """
-        assert x.ndim == 2, x.shape
+        assert x.ndim in [2, 3], f"Expected 2D text tokens or 3D Whisper embeddings, got {x.ndim}D with shape {x.shape}"
         assert x_lens.ndim == 1, x_lens.shape
         y_prompts_codes = None
         if isinstance(y, PromptedFeatures):
@@ -433,7 +433,7 @@ class VALLE(ValleCore):
         Returns:
           Return the predicted audio code matrix.
         """
-        assert x.ndim == 2, x.shape
+        assert x.ndim in [2, 3], f"Expected 2D text tokens or 3D embeddings, got {x.ndim}D"
         assert x_lens.ndim == 1, x_lens.shape
         assert y.ndim == 3, y.shape
         assert y.shape[0] == 1, y.shape
