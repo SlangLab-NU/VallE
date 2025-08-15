@@ -8,6 +8,8 @@ log
 .DS_Store
 .vscode
 .json
+*.sif
+*.tar
 egs/*/data
 egs/libritts/prompts/*.png
 valle/version.py

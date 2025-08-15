@@ -57,7 +57,7 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
         feature_transforms: Union[Sequence[Callable], Callable] = None,
         # WHISPER FEATURES
         use_whisper_embeddings: bool = True,
-        whisper_model_name: str = "base",
+        whisper_model_name: str = "tiny",
     ) -> None:
         super().__init__()
 
@@ -250,8 +250,6 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
                 whisper_embeddings_list = []
                 for cut in cuts:
                     audio = cut.load_audio()
-                    print(f"AUDIO: {audio}")
-                    print(f"AUDIO: {audio.shape}")
                     audio_tensor = torch.from_numpy(audio).float()
                     embeddings = self.extract_whisper_embeddings(audio_tensor, cut.sampling_rate)
                     whisper_embeddings_list.append(embeddings)
@@ -262,16 +260,16 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
                 text_tokens, text_tokens_lens = self.text_token_collater(
                     [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
                 )
-            print(f"utt_id: {[cut.id for cut in cuts]}\n",
-                f"text {[cut.supervisions[0].text for cut in cuts]}\n",
-                f"audio: {audio}\n",
-                f"audio_lens: {audio_lens}\n", 
-                f"atypical_audio_features: {source_audio_features}\n",
-                f"atypical_audio_lens: {source_audio_features_lens}\n",
-                f"audio_features: {target_audio_features}\n",
-                f"audio_features_lens: {target_audio_features_lens}\n",
-                f"text_tokens: {text_tokens}\n",
-                f"text_tokens_lens: {text_tokens_lens}",)
+            # print(f"utt_id: {[cut.id for cut in cuts]}\n",
+            #     f"text {[cut.supervisions[0].text for cut in cuts]}\n",
+            #     f"audio: {audio}\n",
+            #     f"audio_lens: {audio_lens}\n", 
+            #     f"atypical_audio_features: {source_audio_features}\n",
+            #     f"atypical_audio_lens: {source_audio_features_lens}\n",
+            #     f"audio_features: {target_audio_features}\n",
+            #     f"audio_features_lens: {target_audio_features_lens}\n",
+            #     f"text_tokens: {text_tokens}\n",
+            #     f"text_tokens_lens: {text_tokens_lens}",)
             return {
                 "utt_id": [cut.id for cut in cuts],
                 "text": [cut.supervisions[0].text for cut in cuts],
