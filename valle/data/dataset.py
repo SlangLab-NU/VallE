@@ -103,6 +103,9 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             # Move audio to same device as Whisper model
             audio_tensor = audio_tensor.to(self.device)
             
+            # Stores original audio length
+            original_length = len(audio_tensor)
+
             # Pad or trim to 30 seconds (Whisper's expected length)  
             target_length = 480000
             if len(audio_tensor) > target_length:
@@ -120,8 +123,22 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             # Extract embeddings from Whisper encoder
             embeddings = self.whisper_model.embed_audio(mel.unsqueeze(0))
             
+            # CALCULATE HOW MANY EMBEDDING FRAMES CORRESPOND TO ORIGINAL AUDIO
+            # Whisper's encoder downsamples by a factor (usually 2x from mel, then more in transformer)
+            # For Whisper base: 30 seconds -> 1500 embedding frames
+            # So: frames_per_second = 1500 / 30 = 50 frames per second
+            frames_per_second = embeddings.shape[1] / 30.0  # 30 seconds total
+            original_duration_seconds = original_length / 16000.0  # 16kHz audio
+            original_embedding_frames = int(original_duration_seconds * frames_per_second)
+            
+            # TRIM EMBEDDINGS TO ORIGINAL LENGTH
+            embeddings_trimmed = embeddings[:, :original_embedding_frames, :]
+            
             # Move embeddings back to CPU to save GPU memory
-            embeddings = embeddings.cpu()
+            embeddings_trimmed = embeddings_trimmed.cpu()
+
+            print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
+              f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
             
             return embeddings
 
