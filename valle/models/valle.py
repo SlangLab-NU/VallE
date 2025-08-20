@@ -15,7 +15,7 @@
 import random
 from typing import Dict, Iterator, List, Tuple, Union, Optional
 
-import torch
+import torch, whisper, torchaudio
 import torch.nn as nn
 import torch.nn.functional as F
 from icefall.utils import make_pad_mask
@@ -585,6 +585,92 @@ class VALLE(ValleCore):
 
         assert len(codes) == self.num_quantizers
         return torch.stack(codes, dim=-1)
+
+    def extract_whisper_embeddings(self, audio_tensor: torch.Tensor, sampling_rate: int) -> torch.Tensor:
+        """
+        Extract Whisper embeddings from audio
+        """
+        with torch.no_grad():
+            # Ensure 1D audio
+            if audio_tensor.dim() > 1:
+                audio_tensor = audio_tensor.squeeze()
+            
+            # Resample to 16kHz if needed
+            if sampling_rate != 16000:
+                resampler = torchaudio.transforms.Resample(sampling_rate, 16000)
+                audio_tensor = resampler(audio_tensor)
+            
+            # Move audio to same device as Whisper model
+            audio_tensor = audio_tensor.to(self.device)
+            
+            # Stores original audio length
+            original_length = len(audio_tensor)
+
+            # Pad or trim to 30 seconds (Whisper's expected length)  
+            target_length = 480000
+            if len(audio_tensor) > target_length:
+                audio_tensor = audio_tensor[:target_length] 
+            else:
+                padding = target_length - len(audio_tensor) 
+                audio_tensor = F.pad(audio_tensor, (0, padding)) 
+
+            # Whisper preprocessing
+            mel = whisper.log_mel_spectrogram(audio_tensor)
+            
+            # Ensure mel is on correct device
+            mel = mel.to(self.device)
+            
+            # Extract embeddings from Whisper encoder
+            embeddings = self.whisper_model.embed_audio(mel.unsqueeze(0))
+            
+            # CALCULATE HOW MANY EMBEDDING FRAMES CORRESPOND TO ORIGINAL AUDIO
+            # Whisper's encoder downsamples by a factor (usually 2x from mel, then more in transformer)
+            # For Whisper base: 30 seconds -> 1500 embedding frames
+            # So: frames_per_second = 1500 / 30 = 50 frames per second
+            frames_per_second = embeddings.shape[1] / 30.0  # 30 seconds total
+            original_duration_seconds = original_length / 16000.0  # 16kHz audio
+            original_embedding_frames = int(original_duration_seconds * frames_per_second)
+            
+            # TRIM EMBEDDINGS TO ORIGINAL LENGTH
+            embeddings_trimmed = embeddings[:, :original_embedding_frames, :]
+            
+            # Move embeddings back to CPU to save GPU memory
+            embeddings_trimmed = embeddings_trimmed.cpu()
+
+            print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
+              f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
+            
+            return embeddings
+        
+
+    def inference_with_whisper_embeddings(
+        self,
+        source_audio: torch.Tensor,  # Audio to extract semantic content from
+        source_audio_sr: int,
+        y: torch.Tensor,  # Target speaker prompt as usual
+        enroll_x_lens: torch.Tensor,
+        top_k: int = -100,
+        temperature: float = 1.0,
+    ) -> torch.Tensor:
+        """
+        Inference using Whisper embeddings extracted from source audio
+        
+        Args:
+            source_audio: Audio to extract semantic/linguistic content from
+            source_audio_sr: Sample rate of source audio  
+            y: Target speaker audio prompt (unchanged)
+            enroll_x_lens: Lengths (unchanged)
+        """
+        
+        whisper_embeddings = self.extract_whisper_embeddings(source_audio, source_audio_sr)
+        
+        # Create x and x_lens from embeddings
+        x = whisper_embeddings  # (1, T, D) 3D embeddings
+        x_lens = torch.tensor([whisper_embeddings.shape[1]])  # Sequence length
+        
+       
+        return self.inference(x, x_lens, y, enroll_x_lens, top_k, temperature)
+    
 
     def continual(
         self,

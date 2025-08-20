@@ -120,6 +120,13 @@ def get_args():
         help="Do continual task.",
     )
 
+    parser.add_argument(
+        "--textless",
+        type=str2bool,
+        default=False,
+        help="Handle textless vc",
+    )
+
     return parser.parse_args()
 
 
@@ -142,6 +149,35 @@ def load_model(checkpoint, device):
     text_tokens = args.text_tokens
 
     return model, text_tokens
+
+def load_source_audio(source_audio_path: str, device: torch.device) -> tuple:
+    """
+    Load source audio for textless voice conversion
+    
+    Returns:
+        audio: (1, num_samples) audio tensor
+        sample_rate: original sample rate
+    """
+    if not source_audio_path or not os.path.exists(source_audio_path):
+        raise ValueError(f"Source audio file not found: {source_audio_path}")
+    
+    # Load audio
+    audio, sample_rate = torchaudio.load(source_audio_path)
+    
+    # Convert to mono if stereo
+    if audio.shape[0] > 1:
+        audio = audio.mean(dim=0, keepdim=True)
+    
+    # Ensure batch dimension
+    if audio.dim() == 1:
+        audio = audio.unsqueeze(0)
+    
+    audio = audio.to(device)
+    
+    logging.info(f"Loaded source audio: {source_audio_path}")
+    logging.info(f"Audio shape: {audio.shape}, Sample rate: {sample_rate}")
+    
+    return audio, sample_rate
 
 
 @torch.no_grad()
@@ -182,45 +218,83 @@ def main():
         with open(args.text) as f:
             for line in f:
                 fields = line.strip().split("\t")
-                assert len(fields) == 4
+                assert len(fields) == 4 
                 prompt_text, prompt_audio, text, audio_path = fields
-                logging.info(f"synthesize text: {text}")
-                text_tokens, text_tokens_lens = text_collater(
-                    [
-                        tokenize_text(
-                            text_tokenizer, text=f"{prompt_text} {text}".strip()
+                
+                if args.textless:
+                    logging.info(f"Textless conversion: {prompt_audio}")
+                        
+                    # Load source audio (what to convert)
+                    source_audio, source_sr = load_source_audio(prompt_audio, device)
+                    
+                    # Load target speaker prompt (from --audio-prompts)
+                    # if not args.audio_prompts:
+                    #     raise ValueError("--audio-prompts is required for textless mode")
+                    
+                    audio_prompts = []
+                    for audio_file in args.audio_prompts.split("|"):
+                        encoded_frames = tokenize_audio(audio_tokenizer, audio_file)
+                        audio_prompts.append(encoded_frames[0][0])
+                    
+                    audio_prompts = torch.concat(audio_prompts, dim=-1).transpose(2, 1)
+                    audio_prompts = audio_prompts.to(device)
+                    
+                    try:
+                        # Textless inference
+                        encoded_frames = model.inference_with_whisper_embeddings(
+                            source_audio=source_audio.squeeze(0),
+                            source_audio_sr=source_sr,
+                            y=audio_prompts,
+                            enroll_x_lens=None,  # No text enrollment needed
+                            top_k=args.top_k,
+                            temperature=args.temperature,
                         )
-                    ]
-                )
-                _, enroll_x_lens = text_collater(
-                    [
-                        tokenize_text(
-                            text_tokenizer, text=f"{prompt_text}".strip()
-                        )
-                    ]
-                )
 
-                audio_prompts = tokenize_audio(audio_tokenizer, prompt_audio)
-                audio_prompts = audio_prompts[0][0].transpose(2, 1).to(device)
-
-                # synthesis
-                try:
-                    encoded_frames = model.inference(
-                        text_tokens.to(device),
-                        text_tokens_lens.to(device),
-                        audio_prompts,
-                        enroll_x_lens=enroll_x_lens,
-                        top_k=args.top_k,
-                        temperature=args.temperature,
+                        samples = audio_tokenizer.decode(
+                                [(encoded_frames.transpose(2, 1), None)]
+                            )
+                            # store
+                        torchaudio.save(audio_path, samples[0].cpu(), 24000)
+                    except SyntaxError:
+                        print(f"Unable to generate inference for {prompt_audio}, Skipping utterance")
+                else:
+                    logging.info(f"synthesize text: {text}")
+                    text_tokens, text_tokens_lens = text_collater(
+                        [
+                            tokenize_text(
+                                text_tokenizer, text=f"{prompt_text} {text}".strip()
+                            )
+                        ]
+                    )
+                    _, enroll_x_lens = text_collater(
+                        [
+                            tokenize_text(
+                                text_tokenizer, text=f"{prompt_text}".strip()
+                            )
+                        ]
                     )
 
-                    samples = audio_tokenizer.decode(
-                        [(encoded_frames.transpose(2, 1), None)]
-                    )
-                    # store
-                    torchaudio.save(audio_path, samples[0].cpu(), 24000)
-                except SyntaxError:
-                    print(f"Unable to generate inference for {prompt_audio}, Skipping utterance")
+                    audio_prompts = tokenize_audio(audio_tokenizer, prompt_audio)
+                    audio_prompts = audio_prompts[0][0].transpose(2, 1).to(device)
+
+                    # synthesis
+                    try:
+                        encoded_frames = model.inference(
+                            text_tokens.to(device),
+                            text_tokens_lens.to(device),
+                            audio_prompts,
+                            enroll_x_lens=enroll_x_lens,
+                            top_k=args.top_k,
+                            temperature=args.temperature,
+                        )
+
+                        samples = audio_tokenizer.decode(
+                            [(encoded_frames.transpose(2, 1), None)]
+                        )
+                        # store
+                        torchaudio.save(audio_path, samples[0].cpu(), 24000)
+                    except SyntaxError:
+                        print(f"Unable to generate inference for {prompt_audio}, Skipping utterance")
         return
 
     for n, text in enumerate(args.text.split("|")):
