@@ -137,8 +137,8 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             # Move embeddings back to CPU to save GPU memory
             embeddings_trimmed = embeddings_trimmed.cpu()
 
-            print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
-              f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
+            # print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
+            #   f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
             
             return embeddings
 
