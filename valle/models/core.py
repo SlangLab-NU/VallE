@@ -49,7 +49,7 @@ class ValleCore(nn.Module):
         num_quantizers: int = 8,
         # HANDLING WHISPER EMBEDDINGS
         use_whisper_embeddings: bool = True,
-        whisper_embed_dim: int = 384
+        whisper_embed_dim: int = 512
     ):
         super().__init__()
     

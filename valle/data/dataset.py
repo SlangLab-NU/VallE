@@ -57,7 +57,7 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
         feature_transforms: Union[Sequence[Callable], Callable] = None,
         # WHISPER FEATURES
         use_whisper_embeddings: bool = True,
-        whisper_model_name: str = "tiny",
+        whisper_model_name: str = "base",
     ) -> None:
         super().__init__()
 
@@ -140,7 +140,7 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             # print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
             #   f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
             
-            return embeddings
+            return embeddings_trimmed
 
     # New Whisper Methods
     def collate_whisper_embeddings(self, embeddings_list: List[torch.Tensor]) -> tuple:

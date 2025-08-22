@@ -95,7 +95,7 @@ def create_inference_txt_dual(
             # 1) atyp-to-atyp entry
             # ------------------------
             output_path_atyp = os.path.join(os.getcwd(), exp_dir, "infer", f"{utt_id}_synthesized.wav")
-            line_atyp = f"{prompt_text}\t{prompt_audio}\t{text_to_synthesize}\t{output_path_atyp}"
+            line_atyp = f"{prompt_text}\t{prompt_audio}\t{prompt_text}\t{prompt_audio}"
             atyp_to_atyp_lines.append(line_atyp)
 
             # ------------------------
@@ -103,7 +103,7 @@ def create_inference_txt_dual(
             # ------------------------
             typ_speaker = typ_speakers_map[speaker]
             typ_audio = prompt_audio.replace(f"/{speaker}/", f"/{typ_speaker}/").replace(f"{speaker}_", f"{typ_speaker}_")
-            line_typ = f"{prompt_text}\t{output_path_atyp}\t{text_to_synthesize}\t{typ_audio}"
+            line_typ = f"{prompt_text}\t{prompt_audio}\t{text_to_synthesize}\t{typ_audio}"
             atyp_to_typ_lines.append(line_typ)
 
     # Save both txt files
