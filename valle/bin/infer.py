@@ -31,7 +31,7 @@ from pathlib import Path
 
 os.environ["PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION"] = "python"
 
-import torch
+import torch, whisper
 import torchaudio
 from icefall.utils import AttributeDict, str2bool
 
@@ -222,8 +222,15 @@ def main():
                 prompt_text, prompt_audio, text, audio_path = fields
                 
                 if args.textless:
+                    print("Loading Whisper model for textless inference...")
+                    model.whisper_model = whisper.load_model("tiny", device="cpu")
+                    model.whisper_model.eval()
+                    model.device = device  # Set device for Whisper extraction
+                    print("Whisper model loaded")
                     logging.info(f"Textless conversion: {prompt_audio}")
-                        
+                    
+                    model.whisper_model = model.whisper_model.cuda()
+                    
                     # Load source audio (what to convert)
                     source_audio, source_sr = load_source_audio(prompt_audio, device)
                     
@@ -231,13 +238,8 @@ def main():
                     # if not args.audio_prompts:
                     #     raise ValueError("--audio-prompts is required for textless mode")
                     
-                    audio_prompts = []
-                    for audio_file in args.audio_prompts.split("|"):
-                        encoded_frames = tokenize_audio(audio_tokenizer, audio_file)
-                        audio_prompts.append(encoded_frames[0][0])
-                    
-                    audio_prompts = torch.concat(audio_prompts, dim=-1).transpose(2, 1)
-                    audio_prompts = audio_prompts.to(device)
+                    audio_prompts = tokenize_audio(audio_tokenizer, prompt_audio)
+                    audio_prompts = audio_prompts[0][0].transpose(2, 1).to(device)
                     
                     try:
                         # Textless inference

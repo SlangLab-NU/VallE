@@ -590,23 +590,24 @@ class VALLE(ValleCore):
         """
         Extract Whisper embeddings from audio
         """
+
         with torch.no_grad():
             # Ensure 1D audio
             if audio_tensor.dim() > 1:
                 audio_tensor = audio_tensor.squeeze()
             
-            # Resample to 16kHz if needed
+            # Keep audio on CPU for mel computation
+            audio_tensor = audio_tensor.cpu()
+            
+            # Resample on CPU if needed
             if sampling_rate != 16000:
                 resampler = torchaudio.transforms.Resample(sampling_rate, 16000)
                 audio_tensor = resampler(audio_tensor)
             
-            # Move audio to same device as Whisper model
-            audio_tensor = audio_tensor.to(self.device)
-            
-            # Stores original audio length
+            # Store original length
             original_length = len(audio_tensor)
 
-            # Pad or trim to 30 seconds (Whisper's expected length)  
+            # Pad for Whisper
             target_length = 480000
             if len(audio_tensor) > target_length:
                 audio_tensor = audio_tensor[:target_length] 
@@ -614,33 +615,26 @@ class VALLE(ValleCore):
                 padding = target_length - len(audio_tensor) 
                 audio_tensor = F.pad(audio_tensor, (0, padding)) 
 
-            # Whisper preprocessing
+            # Compute mel-spectrogram on CPU (avoids cuFFT issues)
             mel = whisper.log_mel_spectrogram(audio_tensor)
             
-            # Ensure mel is on correct device
-            mel = mel.to(self.device)
+            # Now move mel to GPU for Whisper model
+            mel = mel.to(torch.device("cuda"))
             
-            # Extract embeddings from Whisper encoder
+            # Extract embeddings (Whisper model on GPU)
             embeddings = self.whisper_model.embed_audio(mel.unsqueeze(0))
             
-            # CALCULATE HOW MANY EMBEDDING FRAMES CORRESPOND TO ORIGINAL AUDIO
-            # Whisper's encoder downsamples by a factor (usually 2x from mel, then more in transformer)
-            # For Whisper base: 30 seconds -> 1500 embedding frames
-            # So: frames_per_second = 1500 / 30 = 50 frames per second
-            frames_per_second = embeddings.shape[1] / 30.0  # 30 seconds total
-            original_duration_seconds = original_length / 16000.0  # 16kHz audio
+            # Trim to original length
+            frames_per_second = embeddings.shape[1] / 30.0
+            original_duration_seconds = original_length / 16000.0
             original_embedding_frames = int(original_duration_seconds * frames_per_second)
             
-            # TRIM EMBEDDINGS TO ORIGINAL LENGTH
             embeddings_trimmed = embeddings[:, :original_embedding_frames, :]
             
-            # Move embeddings back to CPU to save GPU memory
-            embeddings_trimmed = embeddings_trimmed.cpu()
-
             print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
-              f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
+                f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
             
-            return embeddings
+            return embeddings_trimmed
         
 
     def inference_with_whisper_embeddings(
