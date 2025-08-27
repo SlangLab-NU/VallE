@@ -69,6 +69,13 @@ python create_inference_text.py --atyp-speakers "very_low" --exp-dir ${exp_dir}
 python3 bin/infer.py --output-dir infer/demos     --checkpoint=${exp_dir}/best-valid-loss.pt   --text-prompts ""  --audio-prompts "" --text atyp_to_atyp_inference_list.txt
 ```
 
+Textless
+
+
+```
+python3 bin/infer.py --output-dir infer/demos     --checkpoint=${exp_dir}/best-valid-loss.pt   --textless True  --audio-prompts "" --text atyp_to_atyp_inference_list.txt
+```
+
 ```
 cd VallE/tts-obj-metrics
 python evaluate.py
