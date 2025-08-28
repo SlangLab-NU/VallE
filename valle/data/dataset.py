@@ -57,7 +57,7 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
         feature_transforms: Union[Sequence[Callable], Callable] = None,
         # WHISPER FEATURES
         use_whisper_embeddings: bool = True,
-        whisper_model_name: str = "base",
+        whisper_model_name: str = "base.en",
     ) -> None:
         super().__init__()
 
@@ -116,8 +116,6 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
 
             # Whisper preprocessing
             mel = whisper.log_mel_spectrogram(audio_tensor)
-            
-            # Ensure mel is on correct device
             mel = mel.to(self.device)
             
             # Extract embeddings from Whisper encoder
