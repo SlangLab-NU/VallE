@@ -368,7 +368,7 @@ def process_base_tts(args, executor, partition, cuts, text_tokenizer, audio_extr
     write_text_tokens(args, unique_symbols)
 
 
-def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extractor):
+def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extractor, block_batching):
     """
     Extracts audio features of the source speaker and pairs it with the features of the target speaker
     and writes it to a json or jsonl.gz file
@@ -419,13 +419,14 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
             extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer)
     
         logging.info(f"Writing cutset to: {src_partition}.{args.suffix}")
-        # Need this to keep the tokenized filenames the same between tts and vc
-        if "dev" in src_partition:
-            cuts_filename = f"dev.{args.suffix}"
-        elif "test" in src_partition:
+        # Need this to keep the tokenized filenames the same between tts and vc 
+        if "test" in src_partition:
             cuts_filename = f"test.{args.suffix}"
-        else:
+        elif "train" in src_partition:
             cuts_filename = f"train.{args.suffix}"
+        if not block_batching:
+            if "dev" in src_partition:
+                cuts_filename = f"dev.{args.suffix}"
         
         src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
     
@@ -463,6 +464,14 @@ def main():
             "atypical_test",
             "typical_dev",
             "atypical_dev",
+        ]
+    elif dataset_parts == "uaspeech_vc_block_batch":
+        print("VC BLOCK BATCHING")
+        dataset_parts = [
+            "typical_train",
+            "atypical_train",
+            "typical_test",
+            "atypical_test",
         ]
     else:
         dataset_parts = dataset_parts.replace("-p", "").strip().split(" ")
@@ -522,20 +531,22 @@ def main():
                             source_test_cuts[partition] = cut_set                      
                         else:
                             target_test_cuts[partition] = cut_set
-                    elif "dev" in partition:
-                        if "atypical" in partition:
-                            source_dev_cuts[partition] = cut_set                      
-                        else:
-                            target_dev_cuts[partition] = cut_set    
+                    if dataset_parts == "uaspeech_vc": # block batching doesn't use a dev set
+                        if "dev" in partition:
+                            if "atypical" in partition:
+                                source_dev_cuts[partition] = cut_set                      
+                            else:
+                                target_dev_cuts[partition] = cut_set    
                     # cut.target_recording = Recording.from_file
             except Exception:
                 cut_set = m["cuts"]
             if args.tts == 1:
                 process_base_tts(args, partition=partition, executor=ex, cuts=cut_set, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
         if args.tts == 0:
-            process_src_tgt_cuts(args, executor=ex, src=source_train_cuts, tgt=target_train_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
-            process_src_tgt_cuts(args, executor=ex, src=source_test_cuts, tgt=target_test_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
-            process_src_tgt_cuts(args, executor=ex, src=source_dev_cuts, tgt=target_dev_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
+            process_src_tgt_cuts(args, executor=ex, src=source_train_cuts, tgt=target_train_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=True)
+            process_src_tgt_cuts(args, executor=ex, src=source_test_cuts, tgt=target_test_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=True)
+            if dataset_parts == "uaspeech_vc":
+                process_src_tgt_cuts(args, executor=ex, src=source_dev_cuts, tgt=target_dev_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=False)
             
 
 if __name__ == "__main__":

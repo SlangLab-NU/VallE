@@ -62,6 +62,14 @@ def get_args():
     )
 
     parser.add_argument(
+        "--block-batching",
+        type=int,
+        choices=[0,1],
+        default=0,
+        help="Set 1 for block based batching, 0 for utterance based batching",
+    )
+
+    parser.add_argument(
         "--atypical-tts",
         type=int,
         choices=[0,1],
@@ -389,6 +397,7 @@ def create_many_to_one_speaker_pair(
     num_jobs: int = 1,
 ) -> Dict[str, Dict[str, Union[RecordingSet, SupervisionSet]]]:
     
+    args = get_args()
     corpus_audio_dir = verify_corpus_dir(corpus_dir, alignments_dir)
     dataset_parts = check_dataset_parts(corpus_audio_dir, dataset_parts)
 
@@ -405,7 +414,11 @@ def create_many_to_one_speaker_pair(
     test_codes, dev_codes = generate_test_dev_utterances() 
 
     # Dynamically create storage for train, test, and dev sets
-    splits = ["train", "test", "dev"]
+    if args.block_batching == 0:
+        splits = ["train", "test", "dev"]
+    else:
+        splits = ["train", "test"]
+
     recording_sets = {f"atypical_recording_{split}_set": [] for split in splits}
     supervision_sets = {f"atypical_supervision_{split}_set": [] for split in splits}
 
@@ -433,17 +446,30 @@ def create_many_to_one_speaker_pair(
                     # Determine split based on utterance ID
                     a_rec_set = set()
                     for a_rec, a_sup, t_rec, t_sup in zip(a_recs, a_sups, t_recs, t_sups):
-                        extracted_id = extract_code_from_id(a_rec.id)
-                        if extracted_id in test_codes:
-                            split = "test"
-                        elif extracted_id in dev_codes:
-                            split = "dev"
+                        if args.block_batching == 0:                       
+                            extracted_id = extract_code_from_id(a_rec.id)
+                            if extracted_id in test_codes:
+                                split = "test"
+                            elif extracted_id in dev_codes:
+                                split = "dev"
+                            else:
+                                split = "train"
+                            if a_rec.id in a_rec_set:
+                                continue
+                            else:
+                                a_rec_set.add(a_rec.id)
+                        
+                        # Block batching. Test set will be split 50/50 after
                         else:
-                            split = "train"
-                        if a_rec.id in a_rec_set:
-                            continue
-                        else:
-                            a_rec_set.add(a_rec.id)
+                            print(f"Recording ID: {a_rec.id}")
+                            if "B2" in a_rec.id:
+                                split = "test"
+                            else:
+                                split = "train"
+                            if a_rec.id in a_rec_set:
+                                continue
+                            else:
+                                a_rec_set.add(a_rec.id)
                         # Store in correct set
                         recording_sets[f"atypical_recording_{split}_set"].append(a_rec)
                         supervision_sets[f"atypical_supervision_{split}_set"].append(a_sup)
@@ -452,6 +478,7 @@ def create_many_to_one_speaker_pair(
                         if t_rec.id not in typical_recording_sets[split]:
                             typical_recording_sets[split][t_rec.id] = t_rec
                             typical_supervision_sets[split][t_sup.id] = t_sup
+                            
 
     # Convert typical set to list
     for split in splits:
