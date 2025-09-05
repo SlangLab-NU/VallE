@@ -18,7 +18,11 @@ RUN pip install torchaudio==0.13.1+cu116 --extra-index-url https://download.pyto
 
 RUN pip uninstall -y whisper && pip install openai-whisper==20230314
 
-RUN pip install speechbrain==0.5.14
+RUN pip install speechbrain==1.0.2
+
+RUN pip install Levenshtein==0.27.1
+
+RUN pip install pyworld
 
 WORKDIR /workspace
 RUN git clone https://github.com/k2-fsa/icefall && \
