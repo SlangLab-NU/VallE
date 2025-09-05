@@ -56,7 +56,7 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
         feature_input_strategy: BatchIO = PrecomputedFeatures(),
         feature_transforms: Union[Sequence[Callable], Callable] = None,
         # WHISPER FEATURES
-        use_whisper_embeddings: bool = True,
+        use_whisper_embeddings: bool = False,
         whisper_model_name: str = "base.en",
     ) -> None:
         super().__init__()
