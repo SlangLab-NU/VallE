@@ -99,6 +99,8 @@ def get_model(params: AttributeDict) -> nn.Module:
             nar_scale_factor=params.scale_factor,
             prepend_bos=params.prepend_bos,
             num_quantizers=params.num_quantizers,
+            use_model_embeddings=params.use_model_embeddings,
+            embed_dim=params.embed_dim,
         )
 
     return model

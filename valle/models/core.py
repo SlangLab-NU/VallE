@@ -38,6 +38,9 @@ class ValleCore(nn.Module):
         d_model: int,
         nhead: int,
         num_layers: int,
+        # HANDLING SEMANTIC EMBEDDINGS
+        use_model_embeddings: str,
+        embed_dim: int,
         norm_first: bool = True,
         add_prenet: bool = False,
         decoder_cls=nn.TransformerEncoder,
@@ -47,9 +50,6 @@ class ValleCore(nn.Module):
         nar_scale_factor: float = 1.0,
         prepend_bos: bool = False,
         num_quantizers: int = 8,
-        # HANDLING WHISPER EMBEDDINGS
-        use_whisper_embeddings: bool = False,
-        whisper_embed_dim: int = 512
     ):
         super().__init__()
     
@@ -65,15 +65,15 @@ class ValleCore(nn.Module):
 
         nar_d_model = int(d_model * nar_scale_factor)
 
-        if use_whisper_embeddings:
+        if use_model_embeddings == "whisper" or use_model_embeddings == "wavlm":
             # Replacing the TokenEmbedding with Linear projection layer
             self.ar_text_embedding = nn.Sequential(
-                nn.Linear(whisper_embed_dim, d_model),
+                nn.Linear(embed_dim, d_model),
                 nn.LayerNorm(d_model),
                 nn.Dropout(0.1)
             )
             self.nar_text_embedding = nn.Sequential(
-                nn.Linear(whisper_embed_dim, nar_d_model),
+                nn.Linear(embed_dim, nar_d_model),
                 nn.LayerNorm(nar_d_model),
                 nn.Dropout(0.1)
             )

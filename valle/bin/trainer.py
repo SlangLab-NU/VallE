@@ -304,7 +304,21 @@ def get_parser():
         type=int,
         default=0,
         help="Number of lower encoder and decoder layers to freeze. 0 means train all layers.",
-    )   
+    )
+
+    parser.add_argument(
+        "--use-model-embeddings",
+        type=str,
+        default="",
+        help="Use whisper or wavlm, else will be text as input"
+    )
+
+    parser.add_argument(
+        "--embed-dim",
+        type=int,
+        default=768,
+        help="The model dimensions for the semantic model"
+    )    
 
     add_model_arguments(parser)
 

@@ -15,6 +15,7 @@ egs/libritts/prompts/*.png
 valle/version.py
 infer/
 scripts/*
+local_wavlm/*
 egs/uaspeech/uaspeechReport.log
 egs/uaspeech/download/*
 data/tokenized/unique_text_tokens.k2symbols
