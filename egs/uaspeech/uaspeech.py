@@ -107,6 +107,8 @@ def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW':
     @return 
     """
     
+    args = get_args()
+
     if seed is not None:
         random.seed(seed)
 
@@ -124,15 +126,21 @@ def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW':
 
         for num in test_numbers:
             if code == "UW":
-                batch = random.randint(1, 3)  # Random batch selection for Uncommon Words
-                test_codes.append(f"B{batch}_UW{num}")
+                if args.block_batching == 0:
+                    batch = random.randint(1, 3)  # Random batch selection for Uncommon Words
+                    test_codes.append(f"B{batch}_UW{num}")
+                else:
+                    test_codes.append(f"B2_UW{num}")
             else:
                 test_codes.append(f"{code}{num}")
 
         for num in dev_numbers:
             if code == "UW":
-                batch = random.randint(1, 3)
-                dev_codes.append(f"B{batch}_UW{num}")
+                if args.block_batching == 0:
+                    batch = random.randint(1, 3)
+                    dev_codes.append(f"B{batch}_UW{num}")
+                else:
+                    dev_codes.append(f"B2_UW{num}")
             else:
                 dev_codes.append(f"{code}{num}")
 

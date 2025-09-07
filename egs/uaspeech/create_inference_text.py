@@ -50,6 +50,14 @@ def get_parser():
     )
 
     parser.add_argument(
+        "--block-inference",
+        type=int,
+        choices=[0,1],
+        default=0,
+        help="If block based splits used for training, use this for inference"
+    )
+
+    parser.add_argument(
         "--exp-dir",
         type=str,
         default="",
@@ -60,6 +68,10 @@ def get_parser():
     )
 
     return parser.parse_args()
+
+# TODO Pull from test_dev_codes.txt, iterate through test set and if code matches
+# write to text file 
+
 
 def create_inference_txt_dual(
     jsonl_gz_path, atyp_speakers, typ_speakers_map, exp_dir,

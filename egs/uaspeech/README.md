@@ -28,6 +28,12 @@ step1 prepare dataset
 bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 1 --control-tts 1 --atypical-tts 0
 ```
 
+**if you are using block based train/test/dev splits**
+
+```
+bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 0 --control-tts 0 --atypical-tts 0 --block-batching 1
+```
+
 5) create export directory
 
 ```
