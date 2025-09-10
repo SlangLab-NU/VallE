@@ -127,6 +127,13 @@ def get_args():
         help="Handle textless vc",
     )
 
+    parser.add_argument(
+        "--use-model-embeddings",
+        type=str2bool,
+        default=False,
+        help="Use model embeddings for textless mode",
+    )
+
     return parser.parse_args()
 
 
@@ -137,6 +144,13 @@ def load_model(checkpoint, device):
     checkpoint = torch.load(checkpoint, map_location=device)
 
     args = AttributeDict(checkpoint)
+    if not hasattr(args, 'use_model_embeddings'):
+        args.use_model_embeddings = False
+    if not hasattr(args, 'embed_dim'):
+        args.embed_dim = 0
+    print("Checkpoint parameters:")
+    for key, value in args.__dict__.items():
+        print(f"  {key}: {value}")
     model = get_model(args)
 
     missing_keys, unexpected_keys = model.load_state_dict(
