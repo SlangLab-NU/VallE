@@ -71,7 +71,19 @@ def get_parser():
 
 # TODO Pull from test_dev_codes.txt, iterate through test set and if code matches
 # write to text file 
+def create_inference_txt_block(
+    test_txt_file, jsonl_gz_path, atyp_speakers, typ_speakers_map, exp_dir,
+    atyp_to_atyp_output_path, atyp_to_typ_output_path
+):
 
+    test_codes = []
+
+    with open(test_txt_file, "r") as f:
+        lines = f.readlines()
+        last_line = lines[-1].strip()
+        test_codes = [code.strip() for code in last_line.split(',')]
+
+    print(test_codes)
 
 def create_inference_txt_dual(
     jsonl_gz_path, atyp_speakers, typ_speakers_map, exp_dir,
@@ -189,14 +201,26 @@ def main():
         # build the mapping
         typ_speakers_map = dict(zip(atyp_speakers, typ_speakers))
 
-        create_inference_txt_dual(
-            args.testset_path,
-            atyp_speakers,
-            typ_speakers_map,
-            args.exp_dir,
-            args.atyp_to_atyp_output_path,
-            args.atyp_to_typ_output_path
-        )
+        if args.block_inference == 0:
+            create_inference_txt_dual(
+                args.testset_path,
+                atyp_speakers,
+                typ_speakers_map,
+                args.exp_dir,
+                args.atyp_to_atyp_output_path,
+                args.atyp_to_typ_output_path
+            )
+        else:
+            create_inference_txt_block(
+                "test_dev_codes.txt",
+                args.testset_path,
+                atyp_speakers,
+                typ_speakers_map,
+                args.exp_dir,
+                args.atyp_to_atyp_output_path,
+                args.atyp_to_typ_output_path
+            )
+
     
     else:
         print("Typical Inference")
