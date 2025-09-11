@@ -237,7 +237,7 @@ def main():
                 
                 if args.textless:
                     print("Loading Whisper model for textless inference...")
-                    model.whisper_model = whisper.load_model("base.en", device="cpu")
+                    model.whisper_model = whisper.load_model("small.en", device="cpu")
                     model.whisper_model.eval()
                     model.device = device  # Set device for Whisper extraction
                     print("Whisper model loaded")
