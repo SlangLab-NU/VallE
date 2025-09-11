@@ -100,6 +100,7 @@ if __name__=="__main__":
         print("==== Evaluation (Typical-to-Typical) ====")
         print(f"DTW mean ± std: {np.mean(list(DTW.values())):.3f} ± {np.std(list(DTW.values())):.3f}")
         print(f"MCD mean ± std: {np.mean(list(MCD.values())):.3f} ± {np.std(list(MCD.values())):.3f}")
+        print(f"WER: {WER:.3f}")
         print(f"CER: {CER:.3f}")
         print(f"SECS: {SECS:.3f}")
         print(f"HYP Sentences: {hyp_sent}")
@@ -143,7 +144,7 @@ if __name__=="__main__":
         print(f"MCD mean ± std: {np.mean(list(MCD.values())):.3f} ± {np.std(list(MCD.values())):.3f}")
         # print(f"MSD mean ± std: {np.mean(list(MSD.values())):.3f} ± {np.std(list(MSD.values())):.3f}")
 
-        # print(f"WER: {WER:.3f}")
+        print(f"WER: {WER:.3f}")
         print(f"CER: {CER:.3f}")
         print(f"SECS: {SECS:.3f}")
         print(f"HYP Sentences: {hyp_sent}")
