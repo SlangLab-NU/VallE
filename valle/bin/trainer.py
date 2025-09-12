@@ -193,9 +193,9 @@ def get_parser():
     )
 
     parser.add_argument(
-    "--reset-lr",
-    action="store_true",
-    help="If set, ignore saved scheduler state and use --base-lr instead.",
+        "--reset-lr",
+        action="store_true",
+        help="If set, ignore saved scheduler state and use --base-lr instead.",
     )
 
     parser.add_argument(
