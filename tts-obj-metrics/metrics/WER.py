@@ -10,10 +10,15 @@ def do_batch_asr(audio_tensors, model_size='medium.en', batch_size=16, first_wor
     model = whisper.load_model(model_size)
     
     for tensor in audio_tensors:
-        tensor = tensor.to(device)
-        result = model.transcribe(tensor)
-        transcript = result['text'].strip()
+        if tensor.is_cuda:
+            tensor = tensor.cpu()
         
+        # Convert to numpy array - Whisper expects numpy input
+        audio_numpy = tensor.numpy()
+        
+        result = model.transcribe(audio_numpy)
+        transcript = result['text'].strip()
+        print(f"Transcript:\n {transcript}")
         if first_word_only and transcript:
             # Extract only the first word
             first_word = transcript.split()[0] if transcript.split() else ""
@@ -32,8 +37,8 @@ def compute_wer(ref_sentences, hyp_sentences):
     for ref_sent, hyp_sent in zip(ref_sentences, hyp_sentences):
         ref_words = ref_sent.lower().split()
         hyp_words = hyp_sent.lower().split()
-        print(ref_words)
-        print(hyp_words)
+        print(f"ref word {ref_words}")
+        print(f"predicted word {hyp_words}")
         total_words += len(ref_words)
         
         # WORD-level Levenshtein distance for WER

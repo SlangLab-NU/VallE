@@ -104,37 +104,42 @@ def create_inference_txt_block(
 
             prompt_code = supervisions['id']     
             prompt_code = prompt_code.split('_')
+            block_code = prompt_code[2]
             prompt_code = prompt_code[3] # Isolate the code which is in the test_codes
-
-            # Check if the utterance (prompt_text) is in the test codes
-            if prompt_code not in test_codes:
-                continue
             
-            # Check if we've already seen this utterance for this speaker
-            if prompt_text in seen_words_per_speaker[speaker]:
+            if block_code == "B2":
+                print(prompt_code)
+                # Check if the utterance (prompt_text) is in the test codes
+                if prompt_code not in test_codes:
+                    continue
+                
+                # Check if we've already seen this utterance for this speaker
+                if prompt_text in seen_words_per_speaker[speaker]:
+                    continue
+                
+                # Add to seen words and process the utterance
+                seen_words_per_speaker[speaker].add(prompt_text)
+
+                utt_id = supervisions['id']
+                prompt_audio = recording['recording']['sources'][0]['source']
+                text_to_synthesize = prompt_text
+
+                # ------------------------
+                # 1) atyp-to-atyp entry
+                # ------------------------
+                output_path_atyp = os.path.join(os.getcwd(), exp_dir, "infer", f"{utt_id}_synthesized.wav")
+                line_atyp = f"{prompt_text}\t{prompt_audio}\t{text_to_synthesize}\t{output_path_atyp}"
+                atyp_to_atyp_lines.append(line_atyp)
+
+                # ------------------------
+                # 2) atyp-to-typ entry
+                # ------------------------
+                typ_speaker = typ_speakers_map[speaker]
+                typ_audio = prompt_audio.replace(f"/{speaker}/", f"/{typ_speaker}/").replace(f"{speaker}_", f"{typ_speaker}_")
+                line_typ = f"{prompt_text}\t{output_path_atyp}\t{text_to_synthesize}\t{typ_audio}"
+                atyp_to_typ_lines.append(line_typ)
+            else:
                 continue
-            
-            # Add to seen words and process the utterance
-            seen_words_per_speaker[speaker].add(prompt_text)
-
-            utt_id = supervisions['id']
-            prompt_audio = recording['recording']['sources'][0]['source']
-            text_to_synthesize = prompt_text
-
-            # ------------------------
-            # 1) atyp-to-atyp entry
-            # ------------------------
-            output_path_atyp = os.path.join(os.getcwd(), exp_dir, "infer", f"{utt_id}_synthesized.wav")
-            line_atyp = f"{prompt_text}\t{prompt_audio}\t{text_to_synthesize}\t{output_path_atyp}"
-            atyp_to_atyp_lines.append(line_atyp)
-
-            # ------------------------
-            # 2) atyp-to-typ entry
-            # ------------------------
-            typ_speaker = typ_speakers_map[speaker]
-            typ_audio = prompt_audio.replace(f"/{speaker}/", f"/{typ_speaker}/").replace(f"{speaker}_", f"{typ_speaker}_")
-            line_typ = f"{prompt_text}\t{output_path_atyp}\t{text_to_synthesize}\t{typ_audio}"
-            atyp_to_typ_lines.append(line_typ)
 
     # Save both txt files
     with open(atyp_to_atyp_output_path, "w") as f1:
