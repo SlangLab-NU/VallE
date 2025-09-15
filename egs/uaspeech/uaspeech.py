@@ -78,6 +78,14 @@ def get_args():
     )
 
     parser.add_argument(
+        "--filter-duplicates",
+        type=int,
+        choices=[0,1],
+        default=1,
+        help="Set 1 to filter duplicate sounding utterances, 0 to do full dataset",
+    )
+
+    parser.add_argument(
         "--suffix",
         type=str,
         default="jsonl.gz",
@@ -242,9 +250,13 @@ def process_utterances(
         try:
             
             if args.prep_tts == 0:
-                atypical_recording_id = f"{atypical_value}_{atypical_key[:-2]}"
-                typical_recording_id = f"{typical_value}_{typical_key[:-2]}"
-                # print(atypical_recording_id)
+                if args.filter_duplicates == 1:
+                    atypical_recording_id = f"{atypical_value}_{atypical_key[:-2]}"
+                    typical_recording_id = f"{typical_value}_{typical_key[:-2]}"
+                    # print(atypical_recording_id)
+                else:
+                    atypical_recording_id = f"{atypical_value}_{atypical_key}"
+                    typical_recording_id = f"{typical_value}_{typical_key}"
             else:
                 atypical_recording_id = f"{atypical_value}_{atypical_key}" 
                 typical_recording_id = f"{typical_value}_{typical_key}"
@@ -403,6 +415,7 @@ def create_many_to_one_speaker_pair(
     dataset_parts: Union[str, Sequence[str]] = "auto",
     output_dir: Optional[Pathlike] = None,
     num_jobs: int = 1,
+    filter_duplicates: int = 1,
 ) -> Dict[str, Dict[str, Union[RecordingSet, SupervisionSet]]]:
     
     args = get_args()
@@ -454,6 +467,13 @@ def create_many_to_one_speaker_pair(
                     # Determine split based on utterance ID
                     a_rec_set = set()
                     for a_rec, a_sup, t_rec, t_sup in zip(a_recs, a_sups, t_recs, t_sups):
+                        
+                        if filter_duplicates == 1:
+                            if a_rec.id in a_rec_set:
+                                continue
+                            else:
+                                a_rec_set.add(a_rec.id)
+                        
                         if args.block_batching == 0:                       
                             extracted_id = extract_code_from_id(a_rec.id)
                             if extracted_id in test_codes:
@@ -462,10 +482,6 @@ def create_many_to_one_speaker_pair(
                                 split = "dev"
                             else:
                                 split = "train"
-                            if a_rec.id in a_rec_set:
-                                continue
-                            else:
-                                a_rec_set.add(a_rec.id)
                         
                         # Block batching. Test set will be split 50/50 after
                         else:
@@ -474,10 +490,7 @@ def create_many_to_one_speaker_pair(
                                 split = "test"
                             else:
                                 split = "train"
-                            if a_rec.id in a_rec_set:
-                                continue
-                            else:
-                                a_rec_set.add(a_rec.id)
+
                         # Store in correct set
                         recording_sets[f"atypical_recording_{split}_set"].append(a_rec)
                         supervision_sets[f"atypical_supervision_{split}_set"].append(a_sup)
@@ -702,7 +715,7 @@ def main():
     else:
         # control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
         
-        create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir)
+        create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir, filter_duplicates=args.filter_duplicates)
         # create_speaker_speaker_pair(args.uaspeech_path, control_speakers, atypical_speakers, None, "normalized", args.output_dir)
 
     ############################################################################################

@@ -101,7 +101,8 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
     python uaspeech.py --uaspeech-path /scratch/lewis.jor/UASpeech \
           --prep-tts $prep_tts --control-tts $control_tts \
           --atypical-tts $atypical_tts --output-dir data/manifests \
-          --block-batching 1
+          --block-batching 1 \
+          --filter-duplicates 0
     touch data/manifests/.uaspeech.done
   fi
 fi
