@@ -136,7 +136,7 @@ if __name__=="__main__":
         MSD = {v: k for v, k in enumerate(batch_mel_spectral_distortion(typ_gts_tensor, synths_tensor, config))}
         MCD = {v: k for v, k in enumerate(batch_mel_cepstral_distortion(typ_gts_tensor, synths_tensor, config))}
 
-        SECS = calculate_speaker_similarity(atyp_gts_tensor, synths_tensor)  # <- always atypical based
+        SECS = calculate_speaker_similarity(typ_gts_tensor, synths_tensor)  # <- always atypical based
         WER, CER, hyp_sent = calculate_batched_wer(atyp_src_txt, synths_tensor)
 
         print("==== Evaluation Results ====")

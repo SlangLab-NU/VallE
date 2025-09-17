@@ -72,7 +72,7 @@ python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.5 --filter-max-
 10) Run inference
 
 ```
-python create_inference_text.py --atyp-speakers "very_low" --exp-dir ${exp_dir}
+python create_inference_text.py --atyp-speakers "very_low" --exp-dir ${exp_dir} --block-inference 0
 ```
 
 ```
