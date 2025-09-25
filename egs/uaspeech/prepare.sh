@@ -55,7 +55,11 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --block-batch)
-      suffix=$2
+      block_batch=$2
+      shift 2
+      ;;
+    --filter-duplicates)
+      filter_duplicates=$2
       shift 2
       ;;
     *)
@@ -101,8 +105,8 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
     python uaspeech.py --uaspeech-path /scratch/lewis.jor/UASpeech \
           --prep-tts $prep_tts --control-tts $control_tts \
           --atypical-tts $atypical_tts --output-dir data/manifests \
-          --block-batching 0 \
-          --filter-duplicates 1
+          --block-batching $block_batch \
+          --filter-duplicates $filter_duplicates
     touch data/manifests/.uaspeech.done
   fi
 fi

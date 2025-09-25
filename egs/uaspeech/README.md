@@ -12,6 +12,16 @@ cd /home/data1/vall-e.git/VallE
 source .venv/bin/activate
 ```
 
+**If you are using discovery cluster**
+
+```
+cd /scratch/<you_dir>/Valle
+```
+
+```
+bash run_interactive_shell
+```
+
 3) Uaspeech directory
 
 ```
@@ -25,13 +35,14 @@ step1 prepare dataset
 **control-tts and atypical-tts will use all speakers respectively if 1. This is how you can train just control, just atypical or both**
 
 ```
-bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 1 --control-tts 1 --atypical-tts 0
+bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 1 --control-tts 1 --atypical-tts 0 
 ```
 
 **if you are using block based train/test/dev splits**
+**Filter duplicates removes the _M1, M2, M3, etc versions of the same utterance (they sound very similar - cuts data from ~55 hours to ~9)**
 
 ```
-bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 0 --control-tts 0 --atypical-tts 0 --block-batching 1
+bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 0 --control-tts 0 --atypical-tts 0 --block-batch 1 --filter-duplicates 1
 ```
 
 5) create export directory
@@ -70,6 +81,8 @@ python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.5 --filter-max-
 ```
 
 10) Run inference
+
+**block inference flag takes the test_dev_codes.txt to create the test audio samples. It prevents hundreds of samples from being created and instead 60-70**
 
 ```
 python create_inference_text.py --atyp-speakers "very_low" --exp-dir ${exp_dir} --block-inference 0
