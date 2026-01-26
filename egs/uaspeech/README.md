@@ -1,4 +1,4 @@
-**Build Container Image
+## Build Container Image
 
 For building the container you have to build it on your home pc or through polaris. Building on the cluster isn't straightforward
 
@@ -25,7 +25,7 @@ H200
 
 ```srun --partition=gpu --nodes=1 --pty --gres=gpu:h200:1 --ntasks=1 --mem=15GB --time=08:00:00 /bin/bash```
 
-**Training JALL-E (Jordan's Vall-e)
+## Training JALL-E (Jordan's Vall-e)
 
 **If you are using polaris**
 1) Working directory
