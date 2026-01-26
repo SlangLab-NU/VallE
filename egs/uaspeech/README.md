@@ -1,5 +1,33 @@
-Training JALL-E (Jordan's Vall-e)
+## Build Container Image
 
+For building the container you have to build it on your home pc or through polaris. Building on the cluster isn't straightforward
+
+In dir of Dockerfile:
+
+```podman build -t <container_name>:latest .```
+
+```podman tag <container_name>:latest <docker.io username>/<container_name>:latest```
+
+```podman push <docker.io username>/<container_name>:latest```
+
+On Cluster:
+
+```apptainer build <container_name>.sif docker://<docker.io username>/<container_name>:latest```
+
+UPDATE FOR UASPEECH
+1) Setup the srun
+
+V100
+
+```srun --constraint=ib --partition=gpu --nodes=1 --gres=gpu:v100-sxm2 --mem=15G --cpus-per-task=8 --time=08:00:00 --pty /bin/bash```
+
+H200
+
+```srun --partition=gpu --nodes=1 --pty --gres=gpu:h200:1 --ntasks=1 --mem=15GB --time=08:00:00 /bin/bash```
+
+## Training JALL-E (Jordan's Vall-e)
+
+**If you are using polaris**
 1) Working directory
 
 ```
@@ -10,6 +38,18 @@ cd /home/data1/vall-e.git/VallE
 
 ```
 source .venv/bin/activate
+```
+
+**If you are using discovery cluster**
+
+```
+cd /scratch/<you_dir>/Valle
+```
+
+copy latest VallE branch into scratch directory 
+
+```
+bash run_interactive_shell.sh
 ```
 
 3) Uaspeech directory
@@ -25,13 +65,14 @@ step1 prepare dataset
 **control-tts and atypical-tts will use all speakers respectively if 1. This is how you can train just control, just atypical or both**
 
 ```
-bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 1 --control-tts 1 --atypical-tts 0
+bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 1 --control-tts 1 --atypical-tts 0 
 ```
 
 **if you are using block based train/test/dev splits**
+**Filter duplicates removes the _M1, M2, M3, etc versions of the same utterance (they sound very similar - cuts data from ~55 hours to ~9)**
 
 ```
-bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 0 --control-tts 0 --atypical-tts 0 --block-batching 1
+bash prepare.sh --stage -1 --stop-stage 2 --prep-tts 0 --control-tts 0 --atypical-tts 0 --block-batch 1 --filter-duplicates 1
 ```
 
 5) create export directory
@@ -70,6 +111,8 @@ python3 bin/trainer.py --max-duration 40 --filter-min-duration 0.5 --filter-max-
 ```
 
 10) Run inference
+
+**block inference flag takes the test_dev_codes.txt to create the test audio samples. It prevents hundreds of samples from being created and instead 60-70**
 
 ```
 python create_inference_text.py --atyp-speakers "very_low" --exp-dir ${exp_dir} --block-inference 0
