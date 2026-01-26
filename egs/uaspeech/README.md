@@ -1,5 +1,33 @@
-Training JALL-E (Jordan's Vall-e)
+**Build Container Image
 
+For building the container you have to build it on your home pc or through polaris. Building on the cluster isn't straightforward
+
+In dir of Dockerfile:
+
+```podman build -t <container_name>:latest .```
+
+```podman tag <container_name>:latest <docker.io username>/<container_name>:latest```
+
+```podman push <docker.io username>/<container_name>:latest```
+
+On Cluster:
+
+```apptainer build <container_name>.sif docker://<docker.io username>/<container_name>:latest```
+
+UPDATE FOR UASPEECH
+1) Setup the srun
+
+V100
+
+```srun --constraint=ib --partition=gpu --nodes=1 --gres=gpu:v100-sxm2 --mem=15G --cpus-per-task=8 --time=08:00:00 --pty /bin/bash```
+
+H200
+
+```srun --partition=gpu --nodes=1 --pty --gres=gpu:h200:1 --ntasks=1 --mem=15GB --time=08:00:00 /bin/bash```
+
+**Training JALL-E (Jordan's Vall-e)
+
+**If you are using polaris**
 1) Working directory
 
 ```
@@ -18,8 +46,10 @@ source .venv/bin/activate
 cd /scratch/<you_dir>/Valle
 ```
 
+copy latest VallE branch into scratch directory 
+
 ```
-bash run_interactive_shell
+bash run_interactive_shell.sh
 ```
 
 3) Uaspeech directory
