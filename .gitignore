@@ -11,6 +11,7 @@ log
 *.sif
 *.tar
 egs/*/data
+egs/sap/extracted/
 egs/libritts/prompts/*.png
 valle/version.py
 infer/
@@ -55,3 +56,4 @@ egs/uaspeech/atyp_to_typ_inference_list.txt
 egs/uaspeech/inference_text.log
 egs/uaspeech/atypical_speakers_trainH5.json
 docker/valle_container.tar
+egs/sap/extracted/
