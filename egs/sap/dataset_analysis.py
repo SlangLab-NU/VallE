@@ -4,9 +4,12 @@ import os
 import sys
 import json
 import io
-from collections import defaultdict
+import matplotlib.pyplot as plt
+from collections import defaultdict, Counter
 from tqdm.auto import tqdm
 from pathlib import Path
+
+
 
 DATASET_DIR = Path("extracted/")
 subfolders = ["DEV", "TRAIN"]
@@ -177,6 +180,97 @@ def count_speakers_with_categories(data_dir):
     return dev_stats, train_stats
 
 
+def create_etiology_histogram(data_dir, dataset_type, output_dir):
+    """
+    Create histogram showing number of speakers per etiology.
+    """
+    folder_path = data_dir / dataset_type
+    speaker_dirs = [item for item in folder_path.iterdir() if item.is_dir()]
+    
+    etiologies = []
+    
+    # Collect etiology for each speaker
+    for speaker_dir in tqdm(speaker_dirs, desc=f"Collecting {dataset_type} etiologies"):
+        json_files = list(speaker_dir.glob("*.json"))
+        if not json_files:
+            continue
+        
+        try:
+            with open(json_files[0], 'r') as f:
+                data = json.load(f)
+                etiology = data.get("Etiology", "Unknown")
+                etiologies.append(etiology)
+        except Exception as e:
+            logger.error(f"Failed to read {speaker_dir.name}: {e}")
+    
+
+    etiology_counts = Counter(etiologies)
+    
+    # Create histogram
+    fig, ax = plt.subplots(figsize=(12, 6))
+    
+    etiologies_sorted = sorted(etiology_counts.items(), key=lambda x: x[1], reverse=True)
+    categories = [e[0] for e in etiologies_sorted]
+    counts = [e[1] for e in etiologies_sorted]
+    
+    bars = ax.bar(categories, counts, color='steelblue', alpha=0.8, edgecolor='black')
+    
+    ax.set_xlabel('Etiology', fontsize=12, fontweight='bold')
+    ax.set_ylabel('Number of Speakers', fontsize=12, fontweight='bold')
+    ax.set_title(f'Speaker Distribution by Etiology - {dataset_type} Set', 
+                 fontsize=14, fontweight='bold', pad=20)
+    ax.set_xticklabels(categories, rotation=45, ha='right')
+    ax.grid(axis='y', alpha=0.3, linestyle='--')
+    
+    for bar, count in zip(bars, counts):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height,
+                f'{count}',
+                ha='center', va='bottom', fontsize=11, fontweight='bold')
+
+    total = sum(counts)
+    plt.figtext(0.99, 0.01, 
+                f'Total speakers: {total}',
+                ha='right', fontsize=10, style='italic')
+    
+    plt.tight_layout()
+    
+    output_path = output_dir / f"etiology_distribution_{dataset_type}.png"
+    plt.savefig(output_path, dpi=300, bbox_inches='tight')
+    plt.close()
+    
+    logger.info(f"Saved etiology histogram: {output_path}")
+    
+    # Log breakdown
+    logger.info(f"\n{dataset_type} ETIOLOGY DISTRIBUTION")
+    logger.info("=" * 60)
+    for etiology, count in etiologies_sorted:
+        percentage = (count / total) * 100
+        logger.info(f"  {etiology}: {count} ({percentage:.1f}%)")
+    logger.info(f"  Total: {total}")
+    
+    return etiology_counts
+
+
+def analyze_etiologies(data_dir):
+    """
+    Create etiology histograms for both DEV and TRAIN datasets.
+    """
+    output_dir = Path("/scratch/lewis.jor/VallE/egs/sap/analysis/etiologies")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("\nETIOLOGY ANALYSIS")
+    logger.info("=" * 60)
+    
+    # Analyze DEV
+    dev_etiologies = create_etiology_histogram(data_dir, "DEV", output_dir)
+    
+    # Analyze TRAIN
+    train_etiologies = create_etiology_histogram(data_dir, "TRAIN", output_dir)
+    
+    return dev_etiologies, train_etiologies
+
+
 def main():
     logger.info("Starting SAP dataset analysis")
     
@@ -184,6 +278,7 @@ def main():
     
     count_speakers_with_categories(DATASET_DIR)
 
+    analyze_etiologies(DATASET_DIR)
 
 if __name__ == "__main__":
     main()
