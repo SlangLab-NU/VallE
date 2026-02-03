@@ -12,6 +12,7 @@ log
 *.tar
 egs/*/data
 egs/sap/extracted/
+egs/sap/analysis/
 egs/libritts/prompts/*.png
 valle/version.py
 infer/
