@@ -4,7 +4,9 @@ import os
 import sys
 import json
 import io
+import csv
 import matplotlib.pyplot as plt
+import numpy as np
 from collections import defaultdict, Counter
 from tqdm.auto import tqdm
 from pathlib import Path
@@ -271,6 +273,144 @@ def analyze_etiologies(data_dir):
     return dev_etiologies, train_etiologies
 
 
+def analyze_speaker_ratings(data_dir, dataset_type, output_dir):
+    """
+    Calculate average ratings per speaker within each etiology.
+    Export one row per speaker to CSV.
+    """
+    folder_path = data_dir / dataset_type
+    speaker_dirs = [item for item in folder_path.iterdir() if item.is_dir()]
+    
+    csv_data = []
+    
+    logger.info(f"\nAnalyzing {dataset_type} speaker ratings...")
+    
+    for speaker_dir in tqdm(speaker_dirs, desc=f"Processing {dataset_type} speakers"):
+        json_files = list(speaker_dir.glob("*.json"))
+        if not json_files:
+            continue
+        
+        try:
+            with open(json_files[0], 'r') as f:
+                data = json.load(f)
+            
+            speaker_id = data.get("Contributor ID", "Unknown")
+            etiology = data.get("Etiology", "Unknown")
+            
+            all_ratings = []
+            rated_utterances = 0
+            unrated_utterances = 0
+            
+            for file_entry in data.get("Files", []):
+                ratings = file_entry.get("Ratings", [])
+                
+                if not ratings:
+                    unrated_utterances += 1
+                else:
+                    rated_utterances += 1
+                    
+                    for rating in ratings:
+                        level = rating.get("Level")
+                        if level is not None:
+                            try:
+                                all_ratings.append(int(level))
+                            except ValueError:
+                                continue
+            
+            if all_ratings:
+                avg_rating = sum(all_ratings) / len(all_ratings)
+            else:
+                avg_rating = None
+            
+            total_utterances = rated_utterances + unrated_utterances
+            
+            csv_data.append({
+                'Speaker_ID': speaker_id,
+                'Etiology': etiology,
+                'Average_Rating': round(avg_rating, 2) if avg_rating is not None else 'N/A',
+                'Number_of_Ratings': rated_utterances,
+                'Number_Not_Rated': unrated_utterances,
+                'Total_Utterances': total_utterances,
+                'Dataset': dataset_type  # Keep for combined CSV
+            })
+        
+        except Exception as e:
+            logger.error(f"Failed to process {speaker_dir.name}: {e}")
+    
+    # Export individual CSV (without Dataset column)
+    output_path = output_dir / f"speaker_ratings_{dataset_type}.csv"
+    
+    if csv_data:
+        fieldnames = ['Speaker_ID', 'Etiology', 'Average_Rating', 'Number_of_Ratings', 
+                      'Number_Not_Rated', 'Total_Utterances']
+        
+        with open(output_path, 'w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
+            writer.writeheader()
+            writer.writerows(csv_data)
+        
+        logger.info(f"Saved speaker ratings CSV: {output_path}")
+    else:
+        logger.warning(f"No rating data found for {dataset_type}")
+    
+    # Log summary by etiology
+    etiology_groups = defaultdict(list)
+    for row in csv_data:
+        etiology_groups[row['Etiology']].append(row)
+    
+    message_parts = [
+        f"\n{dataset_type} SPEAKER RATING SUMMARY BY ETIOLOGY",
+        "=" * 60
+    ]
+    
+    for etiology in sorted(etiology_groups.keys()):
+        speakers = etiology_groups[etiology]
+        avg_ratings = [float(s['Average_Rating']) for s in speakers if s['Average_Rating'] != 'N/A']
+        
+        message_parts.append(f"\n{etiology}:")
+        message_parts.append(f"  Number of speakers: {len(speakers)}")
+        if avg_ratings:
+            message_parts.append(f"  Avg rating across speakers: {sum(avg_ratings)/len(avg_ratings):.2f}")
+            message_parts.append(f"  Range: {min(avg_ratings):.2f} - {max(avg_ratings):.2f}")
+    
+    logger.info("\n".join(message_parts))
+    
+    return csv_data
+
+
+def export_speaker_ratings(data_dir):
+    """
+    Analyze and export speaker ratings for both DEV and TRAIN.
+    """
+    output_dir = Path("analysis/ratings")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    
+    logger.info("\nSPEAKER RATING ANALYSIS")
+    logger.info("=" * 60)
+    
+    # Analyze DEV
+    dev_ratings = analyze_speaker_ratings(data_dir, "DEV", output_dir)
+    
+    # Analyze TRAIN
+    train_ratings = analyze_speaker_ratings(data_dir, "TRAIN", output_dir)
+    
+    # Create combined CSV (with Dataset column)
+    combined_path = output_dir / "speaker_ratings_combined.csv"
+    if dev_ratings or train_ratings:
+        all_data = dev_ratings + train_ratings
+        
+        fieldnames = ['Speaker_ID', 'Etiology', 'Average_Rating', 'Number_of_Ratings', 
+                      'Number_Not_Rated', 'Total_Utterances', 'Dataset']
+        
+        with open(combined_path, 'w', newline='') as csvfile:
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(all_data)
+        
+        logger.info(f"Saved combined speaker ratings CSV: {combined_path}")
+    
+    return dev_ratings, train_ratings
+
 def main():
     logger.info("Starting SAP dataset analysis")
     
@@ -279,6 +419,7 @@ def main():
     count_speakers_with_categories(DATASET_DIR)
 
     analyze_etiologies(DATASET_DIR)
+    export_speaker_ratings(DATASET_DIR)
 
 if __name__ == "__main__":
     main()
