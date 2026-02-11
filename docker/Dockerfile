@@ -2,7 +2,8 @@ FROM docker.io/pytorch/pytorch:1.13.1-cuda11.6-cudnn8-devel
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y vim wget git libsndfile1 espeak-ng
+    apt-get install -y vim wget git libsndfile1 espeak-ng && \
+    rm -rf /var/lib/apt/lists/*
 
 # Pin critical dependencies FIRST
 RUN pip install --no-cache-dir \
@@ -17,7 +18,8 @@ RUN pip install --no-cache-dir \
     pypinyin==0.48.0 \
     lhotse \
     matplotlib \
-    h5py
+    h5py \
+    pandas
 
 RUN pip install --no-cache-dir \
     "transformers==4.21.3" \
@@ -30,14 +32,17 @@ RUN pip install --no-cache-dir \
 RUN pip install --no-cache-dir \
     torchaudio==0.13.1+cu116 --extra-index-url https://download.pytorch.org/whl/cu116
 
-RUN pip uninstall -y whisper && \
-    pip install --no-cache-dir openai-whisper==20230314
+# RUN pip uninstall -y whisper && \
+#     pip install --no-cache-dir openai-whisper==20230314
 
 RUN pip install --no-cache-dir speechbrain==1.0.2
 
 RUN pip install --no-cache-dir Levenshtein==0.27.1
 
 RUN pip install --no-cache-dir pyworld
+
+# Install wandb early
+RUN pip install --no-cache-dir "wandb==0.18.7"
 
 WORKDIR /workspace
 RUN git clone https://github.com/k2-fsa/icefall && \
@@ -61,5 +66,17 @@ RUN git clone -b dev-new https://github.com/SlangLab-NU/VallE.git && \
 
 # Force numpy back to compatible version after all installations
 RUN pip install --force-reinstall --no-cache-dir "numpy==1.24.3" "markupsafe==2.0.1"
+
+# Install jiwer
+RUN pip install --no-cache-dir jiwer
+
+# Install pyarrow with a version that has pre-built wheels (avoid cmake)
+RUN pip install --no-cache-dir --only-binary=:all: "pyarrow==14.0.1"
+
+# Install NeMo with constraints
+RUN pip install --no-cache-dir --prefer-binary \
+    "nemo_toolkit[asr]" \
+    "wandb<0.19" \
+    "pyarrow==14.0.1"
 
 WORKDIR /workspace/vall-e

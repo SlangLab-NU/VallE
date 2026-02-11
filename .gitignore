@@ -58,3 +58,4 @@ egs/uaspeech/inference_text.log
 egs/uaspeech/atypical_speakers_trainH5.json
 docker/valle_container.tar
 egs/sap/extracted/
+docker/.Dockerfile.swp
