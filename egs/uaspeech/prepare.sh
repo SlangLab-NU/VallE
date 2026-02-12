@@ -14,6 +14,7 @@ prep_tts=1
 control_tts=1
 atypical_tts=0
 suffix="jsonl.gz"
+block_batch=1
 
 # We assume dl_dir (download dir) contains the following
 # directories and files. If not, they will be downloaded
@@ -53,6 +54,14 @@ while [[ $# -gt 0 ]]; do
       suffix=$2
       shift 2
       ;;
+    --block-batch)
+      block_batch=$2
+      shift 2
+      ;;
+    --filter-duplicates)
+      filter_duplicates=$2
+      shift 2
+      ;;
     *)
       echo "Unknown option: $1"
       exit 1
@@ -65,6 +74,8 @@ done
 # Determine dataset parts based on prep-tts
 if [[ $prep_tts -eq 1 ]]; then
   dataset_parts="uaspeech_tts"
+elif [[ $block_batch -eq 1 ]]; then
+  dataset_parts="uaspeech_vc_block_batch"
 else
   dataset_parts="uaspeech_vc"
 fi
@@ -81,19 +92,6 @@ log() {
 
 log "dl_dir: $dl_dir"
 
-# if [ $stage -le 0 ] && [ $stop_stage -ge 0 ]; then
-#   log "Stage 0: Download data"
-
-#   # If you have pre-downloaded it to /path/to/LJSpeech,
-#   # you can create a symlink
-#   #
-#   ln -sfv /home/data1/VallE/vall-e/egs/uaspeech $dl_dir/UASpeech
-#   #
-#   # if [ ! -d $dl_dir/LJSpeech-1.1 ];then
-#   #   lhotse download UASpeech $dl_dir
-#   # fi
-# fi
-
 if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
   log "Stage 1: Prepare UASpeech manifest"
   # We assume that you have downloaded the UASpeech corpus
@@ -106,7 +104,9 @@ if [ $stage -le 1 ] && [ $stop_stage -ge 1 ]; then
     # polaris: /home/data1/data/UASpeech
     python uaspeech.py --uaspeech-path /scratch/lewis.jor/UASpeech \
           --prep-tts $prep_tts --control-tts $control_tts \
-          --atypical-tts $atypical_tts --output-dir data/manifests
+          --atypical-tts $atypical_tts --output-dir data/manifests \
+          --block-batching $block_batch \
+          --filter-duplicates $filter_duplicates
     touch data/manifests/.uaspeech.done
   fi
 fi
@@ -123,6 +123,28 @@ if [ $stage -le 2 ] && [ $stop_stage -ge 2 ]; then
         --tts $prep_tts\
         --src-dir "data/manifests" \
         --output-dir "${audio_feats_dir}"
+  fi
+
+  if [[ $block_batch -eq 1 ]]; then
+    log "Performing block-based data splits"
+    
+    total_cuts_test=$(zcat ${audio_feats_dir}/cuts_test.jsonl.gz | wc -l)
+    mid_index_test=$((total_cuts_test / 2))
+    
+    echo "Total cuts test: ${total_cuts_test}"
+    echo "Mid index test: ${mid_index_test}"
+    
+    # dev atypical
+    lhotse subset --last ${mid_index_test}\
+      ${audio_feats_dir}/cuts_test.jsonl.gz \
+      ${audio_feats_dir}/cuts_dev.jsonl.gz
+
+    # test atypical
+    lhotse subset --first ${mid_index_test} \
+      ${audio_feats_dir}/cuts_test.jsonl.gz \
+      ${audio_feats_dir}/cuts_test.jsonl.gz
+  else
+    log "Skipping block-based data splits (block_batch = $block_batch)"
   fi
 
   touch ${audio_feats_dir}/.uaspeech.done

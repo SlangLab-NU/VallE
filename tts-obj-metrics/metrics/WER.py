@@ -4,66 +4,56 @@ import torch
 import torch.nn.functional as F
 import re
 
-def do_batch_asr(audio_tensors, model_size='large', batch_size=16):
+def do_batch_asr(audio_tensors, model_size='medium.en', batch_size=16, first_word_only=True):
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     results = []
     model = whisper.load_model(model_size)
+    
     for tensor in audio_tensors:
-        tensor.to(device)
-        result = model.transcribe(tensor)
-        results.append(result['text'])
-
-
-    # for i in range(0, len(audio_tensors), batch_size):
-    #     audio_tensors_in_batch = audio_tensors[i:i + batch_size]
-    #     max_columns = max(tensor.size(0) for tensor in audio_tensors_in_batch)
-    #
-    #     # Pad tensors to have the same number of columns
-    #     padded_audio_tensors = [
-    #         F.pad(tensor, (0, max_columns - tensor.size(0)), mode='constant', value=0) for
-    #             tensor in audio_tensors_in_batch
-    #     ]
-    #     batch_audio_tensor = torch.cat(padded_audio_tensors, dim=0)
-    #
-    #     batch_audio_tensor.to(device)
-    #
-    #     model.to(device)
-    #
-    #     batch_results = model.transcribe(batch_audio_tensor)
-    #     results = results.extend(batch_results)
-
+        if tensor.is_cuda:
+            tensor = tensor.cpu()
+        
+        # Convert to numpy array - Whisper expects numpy input
+        audio_numpy = tensor.numpy()
+        
+        result = model.transcribe(audio_numpy)
+        transcript = result['text'].strip()
+        print(f"Transcript:\n {transcript}")
+        if first_word_only and transcript:
+            # Extract only the first word
+            first_word = transcript.split()[0] if transcript.split() else ""
+            results.append(first_word)
+        else:
+            results.append(transcript)
+    
     return results
 
 
 def compute_wer(ref_sentences, hyp_sentences):
-    """
-    Compute the Word Error Rate (WER) over a list of reference and hypothesis sentences.
-
-    Parameters:
-    - ref_sentences (list of str): List of reference sentences.
-    - hyp_sentences (list of str): List of hypothesis sentences.
-
-    Returns:
-    - float: Average WER across all sentences.
-    """
     total_words = 0
-    total_errors = 0
-
+    total_word_errors = 0
     cer_list = []
+
     for ref_sent, hyp_sent in zip(ref_sentences, hyp_sentences):
-        ref_words = ref_sent.split()
-        num_words = len(ref_words)
-        total_words += num_words
-
-        # Compute the Levenshtein distance
-        distance = Levenshtein.distance(ref_sent, hyp_sent)
-        cer_value = distance/len(ref_sent)
+        ref_words = ref_sent.lower().split()
+        hyp_words = hyp_sent.lower().split()
+        print(f"ref word {ref_words}")
+        print(f"predicted word {hyp_words}")
+        total_words += len(ref_words)
+        
+        # WORD-level Levenshtein distance for WER
+        word_distance = Levenshtein.distance(ref_words, hyp_words)
+        total_word_errors += word_distance
+        
+        # CHARACTER-level distance for CER
+        char_distance = Levenshtein.distance(ref_sent, hyp_sent)
+        cer_value = char_distance / len(ref_sent) if len(ref_sent) > 0 else 0
         cer_list.append(cer_value)
-        total_errors += distance
 
-    wer = (total_errors / total_words) * 100 if total_words > 0 else 0
-    average_cer = sum(cer_list) / len(cer_list)
-    return wer,average_cer
+    wer = (total_word_errors / total_words) * 100 if total_words > 0 else 0
+    average_cer = sum(cer_list) / len(cer_list) if cer_list else 0
+    
+    return wer, average_cer
 
 
 def calculate_cer(reference, hypothesis):

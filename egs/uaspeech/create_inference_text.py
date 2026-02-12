@@ -50,6 +50,14 @@ def get_parser():
     )
 
     parser.add_argument(
+        "--block-inference",
+        type=int,
+        choices=[0,1],
+        default=0,
+        help="If block based splits used for training, use this for inference"
+    )
+
+    parser.add_argument(
         "--exp-dir",
         type=str,
         default="",
@@ -60,6 +68,94 @@ def get_parser():
     )
 
     return parser.parse_args()
+
+# TODO Pull from test_dev_codes.txt, iterate through test set and if code matches
+# write to text file 
+def create_inference_txt_block(
+    test_txt_file, jsonl_gz_path, atyp_speakers, typ_speakers_map, exp_dir,
+    atyp_to_atyp_output_path, atyp_to_typ_output_path
+):
+
+    test_codes = []
+
+    with open(test_txt_file, "r") as f:
+        lines = f.readlines()
+        last_line = lines[-1].strip()
+        test_codes = [code.strip().replace('B2_', '') for code in last_line.split(',')]
+
+    infer_dir = os.path.join(exp_dir, "infer")
+    os.makedirs(infer_dir, exist_ok=True)
+
+    atyp_to_atyp_lines = []
+    atyp_to_typ_lines = []
+
+    seen_words_per_speaker = {spk: set() for spk in atyp_speakers}
+
+    with gzip.open(str(jsonl_gz_path), 'rt') as f:
+        print("opened file")
+        for line in f:
+            recording = json.loads(line)
+            supervisions = recording['supervisions'][0]
+            speaker = supervisions['speaker'].split('_')[0]
+            if speaker not in atyp_speakers:
+                continue    
+
+            prompt_text = supervisions['text']
+
+            prompt_code = supervisions['id']     
+            prompt_code = prompt_code.split('_')
+            block_code = prompt_code[2]
+            prompt_code = prompt_code[3] # Isolate the code which is in the test_codes
+            
+            if block_code == "B2":
+                print(prompt_code)
+                # Check if the utterance (prompt_text) is in the test codes
+                if prompt_code not in test_codes:
+                    continue
+                
+                # Check if we've already seen this utterance for this speaker
+                if prompt_text in seen_words_per_speaker[speaker]:
+                    continue
+                
+                # Add to seen words and process the utterance
+                seen_words_per_speaker[speaker].add(prompt_text)
+
+                utt_id = supervisions['id']
+                prompt_audio = recording['recording']['sources'][0]['source']
+                text_to_synthesize = prompt_text
+
+                # ------------------------
+                # 1) atyp-to-atyp entry
+                # ------------------------
+                output_path_atyp = os.path.join(os.getcwd(), exp_dir, "infer", f"{utt_id}_synthesized.wav")
+                line_atyp = f"{prompt_text}\t{prompt_audio}\t{text_to_synthesize}\t{output_path_atyp}"
+                atyp_to_atyp_lines.append(line_atyp)
+
+                # ------------------------
+                # 2) atyp-to-typ entry
+                # ------------------------
+                typ_speaker = typ_speakers_map[speaker]
+                typ_audio = prompt_audio.replace(f"/{speaker}/", f"/{typ_speaker}/").replace(f"{speaker}_", f"{typ_speaker}_")
+                line_typ = f"{prompt_text}\t{output_path_atyp}\t{text_to_synthesize}\t{typ_audio}"
+                atyp_to_typ_lines.append(line_typ)
+            else:
+                continue
+
+    # Save both txt files
+    with open(atyp_to_atyp_output_path, "w") as f1:
+        f1.write("\n".join(atyp_to_atyp_lines))
+
+    with open(atyp_to_typ_output_path, "w") as f2:
+        f2.write("\n".join(atyp_to_typ_lines))
+
+    logger.info(f"Generated {len(atyp_to_atyp_lines)} lines in {atyp_to_atyp_output_path}")
+    logger.info(f"Generated {len(atyp_to_typ_lines)} lines in {atyp_to_typ_output_path}")
+    logger.info(f"Inference outputs will go to: {infer_dir}")
+    
+    # Log how many utterances found per speaker
+    for speaker in atyp_speakers:
+        count = len(seen_words_per_speaker[speaker])
+        logger.info(f"Speaker {speaker}: {count} test utterances found")
 
 def create_inference_txt_dual(
     jsonl_gz_path, atyp_speakers, typ_speakers_map, exp_dir,
@@ -157,7 +253,7 @@ def main():
     args = get_parser()
 
     if args.typical_inference == 0:
-        very_low = ["F03", "M01","M04","M16"]
+        very_low = ["F03", "M01","M04"]
         low = ["F02","M07"]
         medium = ["F04","M05","M11"]
 
@@ -166,7 +262,7 @@ def main():
         
         if args.atyp_speakers == 'very_low':
             atyp_speakers = very_low
-            typ_speakers = ["CF03", "CM06", "CM04", "CM13"]
+            typ_speakers = ["CF03", "CM06", "CM04"]
         elif args.atyp_speakers == 'low':
             atyp_speakers = low
             typ_speakers = ["CF02","CM08"]
@@ -177,14 +273,26 @@ def main():
         # build the mapping
         typ_speakers_map = dict(zip(atyp_speakers, typ_speakers))
 
-        create_inference_txt_dual(
-            args.testset_path,
-            atyp_speakers,
-            typ_speakers_map,
-            args.exp_dir,
-            args.atyp_to_atyp_output_path,
-            args.atyp_to_typ_output_path
-        )
+        if args.block_inference == 0:
+            create_inference_txt_dual(
+                args.testset_path,
+                atyp_speakers,
+                typ_speakers_map,
+                args.exp_dir,
+                args.atyp_to_atyp_output_path,
+                args.atyp_to_typ_output_path
+            )
+        else:
+            create_inference_txt_block(
+                "test_dev_codes.txt",
+                args.testset_path,
+                atyp_speakers,
+                typ_speakers_map,
+                args.exp_dir,
+                args.atyp_to_atyp_output_path,
+                args.atyp_to_typ_output_path
+            )
+
     
     else:
         print("Typical Inference")

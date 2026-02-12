@@ -193,9 +193,9 @@ def get_parser():
     )
 
     parser.add_argument(
-    "--reset-lr",
-    action="store_true",
-    help="If set, ignore saved scheduler state and use --base-lr instead.",
+        "--reset-lr",
+        action="store_true",
+        help="If set, ignore saved scheduler state and use --base-lr instead.",
     )
 
     parser.add_argument(
@@ -304,7 +304,21 @@ def get_parser():
         type=int,
         default=0,
         help="Number of lower encoder and decoder layers to freeze. 0 means train all layers.",
-    )   
+    )
+
+    parser.add_argument(
+        "--use-model-embeddings",
+        type=str,
+        default="",
+        help="Use whisper or wavlm, else will be text as input"
+    )
+
+    parser.add_argument(
+        "--embed-dim",
+        type=int,
+        default=768,
+        help="The model dimensions for the semantic model"
+    )    
 
     add_model_arguments(parser)
 
@@ -549,7 +563,7 @@ def compute_loss(
     # at entry, TextTokens is (N, P)
     text_tokens = batch["text_tokens"].to(device)
     text_tokens_lens = batch["text_tokens_lens"].to(device)
-    assert text_tokens.ndim == 2
+    assert text_tokens.ndim in [2, 3], f"Expected 2D tokens or 3D embeddings, got {text_tokens.ndim}D"
 
     target_audio_features = batch["target_audio_features"].to(device)
     target_audio_features_lens = batch["target_audio_features_lens"].to(device)

@@ -20,7 +20,7 @@ modified from lhoste.dataset.speech_synthesis.py
 
 from typing import Callable, Dict, List, Sequence, Union
 
-import torch, re
+import torch, re, whisper, torchaudio
 import torch.nn.functional as F
 from lhotse import validate
 from lhotse.cut import CutSet, MonoCut
@@ -29,6 +29,7 @@ from lhotse.dataset.input_strategies import BatchIO, PrecomputedFeatures
 from lhotse.utils import ifnone
 
 from valle.data.collation import TextTokenCollater
+from transformers import WavLMModel, Wav2Vec2FeatureExtractor, AutoModel, AutoProcessor
 
 
 class SpeechSynthesisDataset(torch.utils.data.Dataset):
@@ -55,12 +56,36 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
         cut_transforms: List[Callable[[CutSet], CutSet]] = None,
         feature_input_strategy: BatchIO = PrecomputedFeatures(),
         feature_transforms: Union[Sequence[Callable], Callable] = None,
+        # WHISPER FEATURES
+        use_model_embeddings: str = "text",
+        whisper_model_name: str = "base.en",
+        wavlm_model_name: str = "/scratch/lewis.jor/VallE/local_wavlm"
     ) -> None:
         super().__init__()
 
         self.text_token_collater = text_token_collater
         self.cut_transforms = ifnone(cut_transforms, [])
         self.feature_input_strategy = feature_input_strategy
+
+        # WHISPER INITIALIZATION
+        self.use_model_embeddings = use_model_embeddings
+        if self.use_model_embeddings == "whisper":
+            print(f"Loading Whisper {whisper_model_name} for embeddings...")
+            # Force to CPU for data loading to avoid device issues
+            self.device = "cpu"  # Start with CPU to avoid device conflicts
+            self.whisper_model = whisper.load_model(whisper_model_name, device=self.device)
+            self.whisper_model.eval()
+            print(f"Whisper model loaded on {self.device}")
+            print(f"Whisper model actual device: {next(self.whisper_model.parameters()).device}")
+
+        # WAVLM INITIALIZATION
+        if self.use_model_embeddings == "wavlm":
+            print(f"Loading WavLM from {wavlm_model_name}...")
+            self.device = "cpu"
+            self.wavlm_processor = Wav2Vec2FeatureExtractor.from_pretrained(wavlm_model_name)
+            self.wavlm_model = WavLMModel.from_pretrained(wavlm_model_name)                    
+            self.wavlm_model.eval()
+            print("WavLM model loaded")
 
         if feature_transforms is None:
             feature_transforms = []
@@ -71,6 +96,110 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             isinstance(transform, Callable) for transform in feature_transforms
         ), "Feature transforms must be Callable"
         self.feature_transforms = feature_transforms
+
+    def extract_whisper_embeddings(self, audio_tensor: torch.Tensor, sampling_rate: int) -> torch.Tensor:
+        """
+        Extract Whisper embeddings from audio
+        """
+        with torch.no_grad():
+            # Ensure 1D audio
+            if audio_tensor.dim() > 1:
+                audio_tensor = audio_tensor.squeeze()
+            
+            # Resample to 16kHz if needed
+            if sampling_rate != 16000:
+                resampler = torchaudio.transforms.Resample(sampling_rate, 16000)
+                audio_tensor = resampler(audio_tensor)
+            
+            # Move audio to same device as Whisper model
+            audio_tensor = audio_tensor.to(self.device)
+            
+            # Stores original audio length
+            original_length = len(audio_tensor)
+
+            # Pad or trim to 30 seconds (Whisper's expected length)  
+            target_length = 480000
+            if len(audio_tensor) > target_length:
+                audio_tensor = audio_tensor[:target_length] 
+            else:
+                padding = target_length - len(audio_tensor) 
+                audio_tensor = F.pad(audio_tensor, (0, padding)) 
+
+            # Whisper preprocessing
+            mel = whisper.log_mel_spectrogram(audio_tensor)
+            mel = mel.to(self.device)
+            
+            # Extract embeddings from Whisper encoder
+            embeddings = self.whisper_model.embed_audio(mel.unsqueeze(0))
+            
+            # CALCULATE HOW MANY EMBEDDING FRAMES CORRESPOND TO ORIGINAL AUDIO
+            # Whisper's encoder downsamples by a factor (usually 2x from mel, then more in transformer)
+            # For Whisper base: 30 seconds -> 1500 embedding frames
+            # So: frames_per_second = 1500 / 30 = 50 frames per second
+            frames_per_second = embeddings.shape[1] / 30.0  # 30 seconds total
+            original_duration_seconds = original_length / 16000.0  # 16kHz audio
+            original_embedding_frames = int(original_duration_seconds * frames_per_second)
+            
+            # TRIM EMBEDDINGS TO ORIGINAL LENGTH
+            embeddings_trimmed = embeddings[:, :original_embedding_frames, :]
+            
+            # Move embeddings back to CPU to save GPU memory
+            embeddings_trimmed = embeddings_trimmed.cpu()
+
+            # print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
+            #   f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
+            
+            return embeddings_trimmed
+
+    
+    def extract_wavlm_embeddings(self, audio_tensor: torch.Tensor, sampling_rate: int) -> torch.Tensor:
+        """
+        Extract WavLM embeddings from audio
+        """
+        with torch.no_grad():
+
+            if audio_tensor.dim() > 1:
+                audio_tensor = audio_tensor.squeeze()
+            
+            # WavLM expects 16kHz (same as Whisper)
+            if sampling_rate != 16000:
+                resampler = torchaudio.transforms.Resample(sampling_rate, 16000)
+                audio_tensor = resampler(audio_tensor)
+            
+            audio_tensor = audio_tensor.to(self.device)
+            
+            inputs = self.wavlm_processor(audio_tensor.numpy(), sampling_rate=16000, return_tensors="pt")
+            inputs = {k: v.to(self.device) for k, v in inputs.items()}
+            
+            # Extract embeddings
+            outputs = self.wavlm_model(**inputs)
+            embeddings = outputs.last_hidden_state  # (1, T, 768) for base model
+            
+            return embeddings.cpu()
+    
+    
+    def collate_embeddings(self, embeddings_list: List[torch.Tensor]) -> tuple:
+        """
+        Collate Whisper embeddings like text tokens
+        """
+        if not embeddings_list:
+            return None, None
+            
+        batch_size = len(embeddings_list)
+        max_len = max(emb.shape[1] for emb in embeddings_list)
+        embed_dim = embeddings_list[0].shape[-1]
+        
+        # Create padded tensor
+        padded_embeddings = torch.zeros(batch_size, max_len, embed_dim)
+        embedding_lens = torch.zeros(batch_size, dtype=torch.long)
+
+        for i, emb in enumerate(embeddings_list):
+            seq_len = emb.shape[1]
+            padded_embeddings[i, :seq_len] = emb.squeeze(0)
+            embedding_lens[i] = seq_len
+            
+        return padded_embeddings, embedding_lens # (B, T, D), (B,)
+
 
     def __getitem__(self, cuts: CutSet) -> Dict[str, torch.Tensor]:
         
@@ -167,9 +296,26 @@ class SpeechSynthesisDataset(torch.utils.data.Dataset):
             else:
                 concat_audio_features, concat_audio_features_lens = source_audio_features, source_audio_features_lens
 
-            text_tokens, text_tokens_lens = self.text_token_collater(
-                [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
-            )
+            # MODIFIED: Handle text tokens vs Whisper embeddings
+            if self.use_model_embeddings in ["whisper", "wavlm"]:
+                # Extract Whisper embeddings from source audio
+                embeddings_list = []
+                for cut in cuts:
+                    audio = cut.load_audio()
+                    audio_tensor = torch.from_numpy(audio).float()
+                    if self.use_model_embeddings == "whisper":
+                        embeddings = self.extract_whisper_embeddings(audio_tensor, cut.sampling_rate)
+                    else:
+                        embeddings = self.extract_wavlm_embeddings(audio_tensor, cut.sampling_rate)
+                    embeddings_list.append(embeddings)
+                
+                text_tokens, text_tokens_lens = self.collate_embeddings(embeddings_list)
+            
+            else:
+                # Your original text token extraction (unchanged)
+                text_tokens, text_tokens_lens = self.text_token_collater(
+                    [cut.supervisions[0].custom["tokens"]["text"] for cut in cuts]
+                )
             # print(f"utt_id: {[cut.id for cut in cuts]}\n",
             #     f"text {[cut.supervisions[0].text for cut in cuts]}\n",
             #     f"audio: {audio}\n",

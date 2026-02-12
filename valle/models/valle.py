@@ -15,7 +15,7 @@
 import random
 from typing import Dict, Iterator, List, Tuple, Union, Optional
 
-import torch
+import torch, whisper, torchaudio
 import torch.nn as nn
 import torch.nn.functional as F
 from icefall.utils import make_pad_mask
@@ -174,7 +174,7 @@ class VALLE(ValleCore):
         Returns:
           Return the predicted audio code matrix, cross-entropy loss and Top-10 accuracy.
         """
-        assert x.ndim == 2, x.shape
+        assert x.ndim in [2, 3], f"Expected 2D text tokens or 3D Whisper embeddings, got {x.ndim}D with shape {x.shape}"
         assert x_lens.ndim == 1, x_lens.shape
         y_prompts_codes = None
         if isinstance(y, PromptedFeatures):
@@ -433,7 +433,7 @@ class VALLE(ValleCore):
         Returns:
           Return the predicted audio code matrix.
         """
-        assert x.ndim == 2, x.shape
+        assert x.ndim in [2, 3], f"Expected 2D text tokens or 3D embeddings, got {x.ndim}D"
         assert x_lens.ndim == 1, x_lens.shape
         assert y.ndim == 3, y.shape
         assert y.shape[0] == 1, y.shape
@@ -585,6 +585,86 @@ class VALLE(ValleCore):
 
         assert len(codes) == self.num_quantizers
         return torch.stack(codes, dim=-1)
+
+    def extract_whisper_embeddings(self, audio_tensor: torch.Tensor, sampling_rate: int) -> torch.Tensor:
+        """
+        Extract Whisper embeddings from audio
+        """
+
+        with torch.no_grad():
+            # Ensure 1D audio
+            if audio_tensor.dim() > 1:
+                audio_tensor = audio_tensor.squeeze()
+            
+            # Keep audio on CPU for mel computation
+            audio_tensor = audio_tensor.cpu()
+            
+            # Resample on CPU if needed
+            if sampling_rate != 16000:
+                resampler = torchaudio.transforms.Resample(sampling_rate, 16000)
+                audio_tensor = resampler(audio_tensor)
+            
+            # Store original length
+            original_length = len(audio_tensor)
+
+            # Pad for Whisper
+            target_length = 480000
+            if len(audio_tensor) > target_length:
+                audio_tensor = audio_tensor[:target_length] 
+            else:
+                padding = target_length - len(audio_tensor) 
+                audio_tensor = F.pad(audio_tensor, (0, padding)) 
+
+            # Compute mel-spectrogram on CPU (avoids cuFFT issues)
+            mel = whisper.log_mel_spectrogram(audio_tensor)
+            
+            # Now move mel to GPU for Whisper model
+            mel = mel.to(torch.device("cuda"))
+            
+            # Extract embeddings (Whisper model on GPU)
+            embeddings = self.whisper_model.embed_audio(mel.unsqueeze(0))
+            
+            # Trim to original length
+            frames_per_second = embeddings.shape[1] / 30.0
+            original_duration_seconds = original_length / 16000.0
+            original_embedding_frames = int(original_duration_seconds * frames_per_second)
+            
+            embeddings_trimmed = embeddings[:, :original_embedding_frames, :]
+            
+            print(f"Audio: {original_length} samples ({original_duration_seconds:.2f}s) -> "
+                f"Embeddings: {original_embedding_frames}/{embeddings.shape[1]} frames")
+            
+            return embeddings_trimmed
+        
+
+    def inference_with_whisper_embeddings(
+        self,
+        source_audio: torch.Tensor,  # Audio to extract semantic content from
+        source_audio_sr: int,
+        y: torch.Tensor,  # Target speaker prompt as usual
+        enroll_x_lens: torch.Tensor,
+        top_k: int = -100,
+        temperature: float = 1.0,
+    ) -> torch.Tensor:
+        """
+        Inference using Whisper embeddings extracted from source audio
+        
+        Args:
+            source_audio: Audio to extract semantic/linguistic content from
+            source_audio_sr: Sample rate of source audio  
+            y: Target speaker audio prompt (unchanged)
+            enroll_x_lens: Lengths (unchanged)
+        """
+        
+        whisper_embeddings = self.extract_whisper_embeddings(source_audio, source_audio_sr)
+        
+        # Create x and x_lens from embeddings
+        x = whisper_embeddings  # (1, T, D) 3D embeddings
+        x_lens = torch.tensor([whisper_embeddings.shape[1]])  # Sequence length
+        
+       
+        return self.inference(x, x_lens, y, enroll_x_lens, top_k, temperature)
+    
 
     def continual(
         self,
