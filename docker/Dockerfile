@@ -15,6 +15,7 @@ RUN pip install --no-cache-dir \
     librosa==0.8.1 \
     phonemizer==3.2.1 \
     pypinyin==0.48.0 \
+    click \
     lhotse \
     matplotlib \
     h5py
