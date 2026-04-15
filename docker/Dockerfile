@@ -37,7 +37,7 @@ RUN find /opt/conda/lib/python3.10/site-packages/librosa -name "*.py" -exec sed 
 
 # 4. lhotse pinned to known working version (git head is unpredictable)
 RUN pip uninstall -y lhotse || true && \
-    pip install --no-cache-dir "lhotse==1.32.2"
+    pip install --no-cache-dir "lhotse==1.32.1"
 
 # 5. k2 — built specifically for torch 1.13.1+cu116
 RUN pip install --no-cache-dir \
