@@ -461,6 +461,12 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
 def main():
     args = get_args()
 
+    log_path = Path(args.output_dir) / "phoneme_warnings.log"
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setLevel(logging.WARNING)
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"))
+    logging.getLogger().addHandler(file_handler)
+
     dataset_parts = args.dataset_parts.replace("--dataset-parts", "").strip()
     if dataset_parts == "all":  # LibriTTS
         dataset_parts = [
