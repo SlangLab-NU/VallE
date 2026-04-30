@@ -468,6 +468,7 @@ def main():
     logging.getLogger().addHandler(file_handler)
 
     dataset_parts = args.dataset_parts.replace("--dataset-parts", "").strip()
+    dataset_parts_name = dataset_parts
     if dataset_parts == "all":  # LibriTTS
         dataset_parts = [
             "dev-clean",
@@ -573,7 +574,7 @@ def main():
                             source_test_cuts[partition] = cut_set
                         else:
                             target_test_cuts[partition] = cut_set
-                    if dataset_parts in ("uaspeech_vc", "sap_vc"):
+                    if dataset_parts_name in ("uaspeech_vc", "sap_vc"):
                         if "dev" in partition:
                             if is_source:
                                 source_dev_cuts[partition] = cut_set
@@ -587,7 +588,7 @@ def main():
         if args.tts == 0:
             process_src_tgt_cuts(args, executor=ex, src=source_train_cuts, tgt=target_train_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=True)
             process_src_tgt_cuts(args, executor=ex, src=source_test_cuts, tgt=target_test_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=True)
-            if dataset_parts in ("uaspeech_vc", "sap_vc"):
+            if dataset_parts_name in ("uaspeech_vc", "sap_vc"):
                 process_src_tgt_cuts(args, executor=ex, src=source_dev_cuts, tgt=target_dev_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=False)
             
 
