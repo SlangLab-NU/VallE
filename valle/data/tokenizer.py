@@ -325,6 +325,7 @@ class AudioTokenExtractor(FeatureExtractor):
 
     def extract_batch(self, samples, sampling_rate, lengths) -> np.ndarray:
         samples = [wav.squeeze() for wav in samples]
+        samples = [s.mean(0) if s.ndim > 1 else s for s in samples]
         device = self.tokenizer.device
         samples, lengths = self.pad_tensor_list(samples, device)
         samples = samples.unsqueeze(1)
