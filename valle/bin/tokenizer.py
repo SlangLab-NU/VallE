@@ -492,8 +492,8 @@ def main():
         dataset_parts = [
             "train_source",
             "train_target",
-            "dev_source",
-            "dev_target",
+            "val_source",
+            "val_target",
             "test_source",
             "test_target",
         ]
@@ -575,7 +575,7 @@ def main():
                         else:
                             target_test_cuts[partition] = cut_set
                     if dataset_parts_name in ("uaspeech_vc", "sap_vc"):
-                        if "dev" in partition:
+                        if "dev" in partition or "val" in partition:
                             if is_source:
                                 source_dev_cuts[partition] = cut_set
                             else:
