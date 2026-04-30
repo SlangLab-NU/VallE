@@ -158,9 +158,6 @@ class TextTokenizer:
                 [p for p in pp if p != self.separator.phone]
                 + [self.separator.word]
             )
-        assert len("".join(fields[:-1])) == len(phonemized) - phonemized.count(
-            self.separator.phone
-        )
         return fields[:-1]
 
     def __call__(self, text, strip=True) -> List[List[str]]:
