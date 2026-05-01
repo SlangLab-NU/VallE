@@ -450,7 +450,7 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
         elif "train" in src_partition:
             cuts_filename = f"train.{args.suffix}"
         if not block_batching:
-            if "dev" in src_partition:
+            if "dev" in src_partition or "val" in src_partition:
                 cuts_filename = f"dev.{args.suffix}"
         
         src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
