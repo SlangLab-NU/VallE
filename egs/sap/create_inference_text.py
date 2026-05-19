@@ -74,6 +74,13 @@ def get_parser():
         help="Comma-separated list of speaker UUIDs to include. Overrides CSV-based filters.",
     )
 
+    parser.add_argument(
+        "--max-speakers",
+        type=int,
+        default=None,
+        help="Limit output to this many speakers (useful for testing).",
+    )
+
     return parser.parse_args()
 
 
@@ -129,6 +136,9 @@ def create_inference_txt(jsonl_gz_path, output_path, exp_dir, allowed_speakers):
             speaker = supervisions["speaker"]
 
             if allowed_speakers is not None and speaker not in allowed_speakers:
+                continue
+
+            if args.max_speakers is not None and speaker not in seen_per_speaker and len(seen_per_speaker) >= args.max_speakers:
                 continue
 
             transcript = supervisions["text"]
