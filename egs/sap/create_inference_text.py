@@ -81,6 +81,13 @@ def get_parser():
         help="Limit output to this many speakers (useful for testing).",
     )
 
+    parser.add_argument(
+        "--max-utterances-per-speaker",
+        type=int,
+        default=None,
+        help="Limit output to this many utterances per speaker.",
+    )
+
     return parser.parse_args()
 
 
@@ -122,7 +129,7 @@ def load_speaker_filter(args):
     return allowed
 
 
-def create_inference_txt(max_speakers, jsonl_gz_path, output_path, exp_dir, allowed_speakers):
+def create_inference_txt(max_speakers, jsonl_gz_path, output_path, exp_dir, allowed_speakers, max_utterances_per_speaker=None):
     infer_dir = os.path.join(exp_dir, "infer") if exp_dir else "infer"
     os.makedirs(infer_dir, exist_ok=True)
 
@@ -147,6 +154,8 @@ def create_inference_txt(max_speakers, jsonl_gz_path, output_path, exp_dir, allo
             if speaker not in seen_per_speaker:
                 seen_per_speaker[speaker] = set()
             if transcript in seen_per_speaker[speaker]:
+                continue
+            if max_utterances_per_speaker is not None and len(seen_per_speaker[speaker]) >= max_utterances_per_speaker:
                 continue
             seen_per_speaker[speaker].add(transcript)
 
@@ -179,6 +188,7 @@ def main():
         args.output_path,
         args.exp_dir,
         allowed_speakers,
+        args.max_utterances_per_speaker,
     )
 
 
