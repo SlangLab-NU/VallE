@@ -40,7 +40,7 @@ RUN find /opt/conda/lib/python3.10/site-packages/librosa -name "*.py" -exec sed 
     {} \; 2>/dev/null || true
 
 WORKDIR /workspace
-RUN git clone -b dev-new https://github.com/SlangLab-NU/VallE.git && \
+RUN git clone -b sap_data_analysis https://github.com/SlangLab-NU/VallE.git && \
     cd VallE && \
     pip install -e .
 
