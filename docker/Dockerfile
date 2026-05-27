@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir \
     "phonemizer==3.2.1" \
     "pypinyin==0.48.0" \
     "matplotlib" \
+    "pandas" \
     "h5py==3.8.0" --only-binary=h5py \
     "protobuf==3.20.3" \
     "tensorboard==2.11.2"

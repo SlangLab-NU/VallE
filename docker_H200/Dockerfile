@@ -10,7 +10,7 @@ RUN apt-get install -y vim wget git libsndfile1 espeak-ng
 RUN pip install k2==1.24.4.dev20240223+cuda12.1.torch2.1.0 -f https://k2-fsa.github.io/k2/cuda.html
 
 # Install packages with versions compatible with PyTorch 2.1 and numpy >= 1.24
-RUN pip install torchmetrics>=0.11.4 librosa>=0.10.0 phonemizer==3.2.1 pypinyin==0.48.0 lhotse matplotlib h5py
+RUN pip install torchmetrics>=0.11.4 librosa>=0.10.0 phonemizer==3.2.1 pypinyin==0.48.0 lhotse matplotlib h5py pandas
 
 # Install newer torchaudio compatible with PyTorch 2.1
 RUN pip install torchaudio>=2.1.0
