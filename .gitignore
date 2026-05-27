@@ -8,11 +8,14 @@ log
 .DS_Store
 .vscode
 .json
+.jsonl.gz
 *.sif
 *.tar
 egs/*/data
 egs/sap/extracted/
 egs/sap/analysis/
+egs/sap/prefix_mode_0
+egs/sap/infer/*
 egs/libritts/prompts/*.png
 valle/version.py
 infer/
@@ -65,3 +68,8 @@ egs/sap/--src-dir
 egs/sap/--tts
 egs/sap/cd
 egs/sap/python
+egs/sap/data.log
+egs/sap/first_test/*
+egs/sap/prefix_mode_0/model.txt
+egs/sap/inference_text.log
+egs/sap/sap_inference_list.txt
