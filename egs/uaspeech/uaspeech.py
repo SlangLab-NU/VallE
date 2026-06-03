@@ -62,11 +62,27 @@ def get_args():
     )
 
     parser.add_argument(
+        "--block-batching",
+        type=int,
+        choices=[0,1],
+        default=0,
+        help="Set 1 for block based batching, 0 for utterance based batching",
+    )
+
+    parser.add_argument(
         "--atypical-tts",
         type=int,
         choices=[0,1],
         default=1,
         help="Set 1 to prep full atypical data, 0 for False",
+    )
+
+    parser.add_argument(
+        "--filter-duplicates",
+        type=int,
+        choices=[0,1],
+        default=1,
+        help="Set 1 to filter duplicate sounding utterances, 0 to do full dataset",
     )
 
     parser.add_argument(
@@ -99,6 +115,8 @@ def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW':
     @return 
     """
     
+    args = get_args()
+
     if seed is not None:
         random.seed(seed)
 
@@ -116,15 +134,21 @@ def generate_test_dev_utterances(codes={'D': 10,'L': 26,'C': 19, 'CW': 100,'UW':
 
         for num in test_numbers:
             if code == "UW":
-                batch = random.randint(1, 3)  # Random batch selection for Uncommon Words
-                test_codes.append(f"B{batch}_UW{num}")
+                if args.block_batching == 0:
+                    batch = random.randint(1, 3)  # Random batch selection for Uncommon Words
+                    test_codes.append(f"B{batch}_UW{num}")
+                else:
+                    test_codes.append(f"B2_UW{num}")
             else:
                 test_codes.append(f"{code}{num}")
 
         for num in dev_numbers:
             if code == "UW":
-                batch = random.randint(1, 3)
-                dev_codes.append(f"B{batch}_UW{num}")
+                if args.block_batching == 0:
+                    batch = random.randint(1, 3)
+                    dev_codes.append(f"B{batch}_UW{num}")
+                else:
+                    dev_codes.append(f"B2_UW{num}")
             else:
                 dev_codes.append(f"{code}{num}")
 
@@ -226,9 +250,13 @@ def process_utterances(
         try:
             
             if args.prep_tts == 0:
-                atypical_recording_id = f"{atypical_value}_{atypical_key[:-2]}"
-                typical_recording_id = f"{typical_value}_{typical_key[:-2]}"
-                # print(atypical_recording_id)
+                if args.filter_duplicates == 1:
+                    atypical_recording_id = f"{atypical_value}_{atypical_key[:-2]}"
+                    typical_recording_id = f"{typical_value}_{typical_key[:-2]}"
+                    # print(atypical_recording_id)
+                else:
+                    atypical_recording_id = f"{atypical_value}_{atypical_key}"
+                    typical_recording_id = f"{typical_value}_{typical_key}"
             else:
                 atypical_recording_id = f"{atypical_value}_{atypical_key}" 
                 typical_recording_id = f"{typical_value}_{typical_key}"
@@ -387,8 +415,10 @@ def create_many_to_one_speaker_pair(
     dataset_parts: Union[str, Sequence[str]] = "auto",
     output_dir: Optional[Pathlike] = None,
     num_jobs: int = 1,
+    filter_duplicates: int = 1,
 ) -> Dict[str, Dict[str, Union[RecordingSet, SupervisionSet]]]:
     
+    args = get_args()
     corpus_audio_dir = verify_corpus_dir(corpus_dir, alignments_dir)
     dataset_parts = check_dataset_parts(corpus_audio_dir, dataset_parts)
 
@@ -405,7 +435,11 @@ def create_many_to_one_speaker_pair(
     test_codes, dev_codes = generate_test_dev_utterances() 
 
     # Dynamically create storage for train, test, and dev sets
-    splits = ["train", "test", "dev"]
+    if args.block_batching == 0:
+        splits = ["train", "test", "dev"]
+    else:
+        splits = ["train", "test"]
+
     recording_sets = {f"atypical_recording_{split}_set": [] for split in splits}
     supervision_sets = {f"atypical_supervision_{split}_set": [] for split in splits}
 
@@ -433,17 +467,30 @@ def create_many_to_one_speaker_pair(
                     # Determine split based on utterance ID
                     a_rec_set = set()
                     for a_rec, a_sup, t_rec, t_sup in zip(a_recs, a_sups, t_recs, t_sups):
-                        extracted_id = extract_code_from_id(a_rec.id)
-                        if extracted_id in test_codes:
-                            split = "test"
-                        elif extracted_id in dev_codes:
-                            split = "dev"
+                        
+                        if filter_duplicates == 1:
+                            if a_rec.id in a_rec_set:
+                                continue
+                            else:
+                                a_rec_set.add(a_rec.id)
+                        
+                        if args.block_batching == 0:                       
+                            extracted_id = extract_code_from_id(a_rec.id)
+                            if extracted_id in test_codes:
+                                split = "test"
+                            elif extracted_id in dev_codes:
+                                split = "dev"
+                            else:
+                                split = "train"
+                        
+                        # Block batching. Test set will be split 50/50 after
                         else:
-                            split = "train"
-                        if a_rec.id in a_rec_set:
-                            continue
-                        else:
-                            a_rec_set.add(a_rec.id)
+                            print(f"Recording ID: {a_rec.id}")
+                            if "B2" in a_rec.id:
+                                split = "test"
+                            else:
+                                split = "train"
+
                         # Store in correct set
                         recording_sets[f"atypical_recording_{split}_set"].append(a_rec)
                         supervision_sets[f"atypical_supervision_{split}_set"].append(a_sup)
@@ -452,6 +499,7 @@ def create_many_to_one_speaker_pair(
                         if t_rec.id not in typical_recording_sets[split]:
                             typical_recording_sets[split][t_rec.id] = t_rec
                             typical_supervision_sets[split][t_sup.id] = t_sup
+                            
 
     # Convert typical set to list
     for split in splits:
@@ -667,7 +715,7 @@ def main():
     else:
         # control_speakers = ["CF02", "CF04", "CM12", "CM06", "CM10"]
         
-        create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir)
+        create_many_to_one_speaker_pair(args.uaspeech_path, "CM05", atypical_speakers, None, "normalized", args.output_dir, filter_duplicates=args.filter_duplicates)
         # create_speaker_speaker_pair(args.uaspeech_path, control_speakers, atypical_speakers, None, "normalized", args.output_dir)
 
     ############################################################################################

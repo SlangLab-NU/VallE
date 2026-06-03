@@ -100,6 +100,7 @@ if __name__=="__main__":
         print("==== Evaluation (Typical-to-Typical) ====")
         print(f"DTW mean ± std: {np.mean(list(DTW.values())):.3f} ± {np.std(list(DTW.values())):.3f}")
         print(f"MCD mean ± std: {np.mean(list(MCD.values())):.3f} ± {np.std(list(MCD.values())):.3f}")
+        print(f"WER: {WER:.3f}")
         print(f"CER: {CER:.3f}")
         print(f"SECS: {SECS:.3f}")
         print(f"HYP Sentences: {hyp_sent}")
@@ -135,7 +136,7 @@ if __name__=="__main__":
         MSD = {v: k for v, k in enumerate(batch_mel_spectral_distortion(typ_gts_tensor, synths_tensor, config))}
         MCD = {v: k for v, k in enumerate(batch_mel_cepstral_distortion(typ_gts_tensor, synths_tensor, config))}
 
-        SECS = calculate_speaker_similarity(atyp_gts_tensor, synths_tensor)  # <- always atypical based
+        SECS = calculate_speaker_similarity(typ_gts_tensor, synths_tensor)  # <- always atypical based
         WER, CER, hyp_sent = calculate_batched_wer(atyp_src_txt, synths_tensor)
 
         print("==== Evaluation Results ====")
@@ -143,7 +144,7 @@ if __name__=="__main__":
         print(f"MCD mean ± std: {np.mean(list(MCD.values())):.3f} ± {np.std(list(MCD.values())):.3f}")
         # print(f"MSD mean ± std: {np.mean(list(MSD.values())):.3f} ± {np.std(list(MSD.values())):.3f}")
 
-        # print(f"WER: {WER:.3f}")
+        print(f"WER: {WER:.3f}")
         print(f"CER: {CER:.3f}")
         print(f"SECS: {SECS:.3f}")
         print(f"HYP Sentences: {hyp_sent}")

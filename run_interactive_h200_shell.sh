@@ -4,7 +4,7 @@ export PYTHONPATH=""
 export VALLE_ROOT=/scratch/lewis.jor
 export VALLE_REPO_ROOT=$VALLE_ROOT/VallE
 export APPTAINERENV_PYTHONPATH="$VALLE_REPO_ROOT:/workspace/icefall:$PYTHONPATH"
-export apptainer_image=$VALLE_REPO_ROOT/valle_container3.sif
+export apptainer_image=$VALLE_REPO_ROOT/valle_h200_container.sif
 
 # Point all cache dirs to writable scratch space
 export APPTAINERENV_NUMBA_CACHE_DIR=$VALLE_ROOT/cache/numba

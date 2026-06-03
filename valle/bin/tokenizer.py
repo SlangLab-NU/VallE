@@ -199,6 +199,14 @@ def extract_text_phonemes(args, text_tokenizer, partition, phoneme_symbols, cut_
                         c.supervisions[0].custom = {}
                     else:
                         logging.info(f"Supervision empty: {c}")
+                elif args.prefix == "sap":
+                    if c.supervisions[0].text != None:
+                        phonemes = tokenize_text(
+                            text_tokenizer, text=c.supervisions[0].text
+                        )
+                        c.supervisions[0].custom = {}
+                    else:
+                        logging.info(f"Supervision empty: {c}")
                 else:
                     assert args.prefix == "libritts"
                     phonemes = tokenize_text(
@@ -206,7 +214,7 @@ def extract_text_phonemes(args, text_tokenizer, partition, phoneme_symbols, cut_
                     )
                 c.supervisions[0].custom["tokens"] = {"text": phonemes}
                 phoneme_symbols.update(phonemes)
-    
+
     logging.info(f"Writing cutset to: {partition}.{args.suffix}")
     cuts_filename = f"{partition}.{args.suffix}"
     cut_set.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
@@ -246,7 +254,7 @@ def extract_target_features(args, executor, tgt, audio_extractor):
                     f"{args.output_dir}/{args.prefix}_fbank_{tgt_partition}"
                 )
 
-            if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
+            if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech", "sap"]:
                 print("Prefix check")
                 tgt_cuts = tgt_cuts.resample(24000)
                 print(f" After processing: {len(tgt_cuts)}")
@@ -309,7 +317,7 @@ def process_cuts(args, src_cuts, sample_rate, partition):
             f"{args.output_dir}/{args.prefix}_fbank_{partition}"
         )
 
-    if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech"]:
+    if args.prefix.lower() in ["ljspeech", "aishell", "baker", "uaspeech", "sap"]:
         src_cuts = src_cuts.resample(sample_rate)
     
     return src_storage_path, src_cuts
@@ -343,6 +351,14 @@ def extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer):
                     c.supervisions[0].custom = {}
                 else:
                     logging.info(f"Supervision empty: {c}")
+            elif args.prefix == "sap":
+                if c.supervisions[0].text != None:
+                    phonemes = tokenize_text(
+                        text_tokenizer, text=c.supervisions[0].text
+                    )
+                    c.supervisions[0].custom = {}
+                else:
+                    logging.info(f"Supervision empty: {c}")
             else:
                 assert args.prefix == "libritts"
                 phonemes = tokenize_text(
@@ -368,7 +384,7 @@ def process_base_tts(args, executor, partition, cuts, text_tokenizer, audio_extr
     write_text_tokens(args, unique_symbols)
 
 
-def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extractor):
+def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extractor, block_batching):
     """
     Extracts audio features of the source speaker and pairs it with the features of the target speaker
     and writes it to a json or jsonl.gz file
@@ -395,15 +411,24 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
             tgt_cuts_cycle = itertools.cycle(tgt_cuts)
 
             mismatch = []
-            # Assign the computed target features to the source
-            tgt_lookup = {
-                remove_trailing_id_suffix(c.id).replace(get_speaker(c.id), ''): c
-                for c in tgt_cuts
-            }
+            # Assign the computed target features to the source.
+            # SAP source and target share the same recording ID, so match directly.
+            # UASpeech uses a many-to-one setup (atypical->typical) so the speaker
+            # component must be stripped from the ID before matching.
+            if args.prefix == "sap":
+                tgt_lookup = {
+                    remove_trailing_id_suffix(c.id): c
+                    for c in tgt_cuts
+                }
+            else:
+                tgt_lookup = {
+                    remove_trailing_id_suffix(c.id).replace(get_speaker(c.id), ''): c
+                    for c in tgt_cuts
+                }
 
             for src_cut in src_cuts:
                 src_id = remove_trailing_id_suffix(src_cut.id)
-                src_key = src_id.replace(get_speaker(src_id), '')
+                src_key = src_id if args.prefix == "sap" else src_id.replace(get_speaker(src_id), '')
 
                 tgt_cut = tgt_lookup.get(src_key, None)
                 if tgt_cut is None:
@@ -419,13 +444,14 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
             extract_phonemes(args, src_cuts, unique_symbols, text_tokenizer)
     
         logging.info(f"Writing cutset to: {src_partition}.{args.suffix}")
-        # Need this to keep the tokenized filenames the same between tts and vc
-        if "dev" in src_partition:
-            cuts_filename = f"dev.{args.suffix}"
-        elif "test" in src_partition:
+        # Need this to keep the tokenized filenames the same between tts and vc 
+        if "test" in src_partition:
             cuts_filename = f"test.{args.suffix}"
-        else:
+        elif "train" in src_partition:
             cuts_filename = f"train.{args.suffix}"
+        if not block_batching:
+            if "dev" in src_partition or "val" in src_partition:
+                cuts_filename = f"dev.{args.suffix}"
         
         src_cuts.to_file(f"{args.output_dir}/cuts_{cuts_filename}")
     
@@ -435,7 +461,14 @@ def process_src_tgt_cuts(args, executor, src, tgt, text_tokenizer, audio_extract
 def main():
     args = get_args()
 
+    log_path = Path(args.output_dir) / "phoneme_warnings.log"
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setLevel(logging.WARNING)
+    file_handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s [%(filename)s:%(lineno)d] %(message)s"))
+    logging.getLogger().addHandler(file_handler)
+
     dataset_parts = args.dataset_parts.replace("--dataset-parts", "").strip()
+    dataset_parts_name = dataset_parts
     if dataset_parts == "all":  # LibriTTS
         dataset_parts = [
             "dev-clean",
@@ -454,6 +487,16 @@ def main():
             "test",
             "dev",
         ]
+    elif dataset_parts == "sap_vc":
+        print("SAP VC")
+        dataset_parts = [
+            "train_source",
+            "train_target",
+            "val_source",
+            "val_target",
+            "test_source",
+            "test_target",
+        ]
     elif dataset_parts == "uaspeech_vc":
         print("VC")
         dataset_parts = [
@@ -463,6 +506,14 @@ def main():
             "atypical_test",
             "typical_dev",
             "atypical_dev",
+        ]
+    elif dataset_parts == "uaspeech_vc_block_batch":
+        print("VC BLOCK BATCHING")
+        dataset_parts = [
+            "typical_train",
+            "atypical_train",
+            "typical_test",
+            "atypical_test",
         ]
     else:
         dataset_parts = dataset_parts.replace("-p", "").strip().split(" ")
@@ -512,30 +563,33 @@ def main():
                     supervisions=m["supervisions"],
                 )
                 if args.tts == 0:
+                    is_source = ("atypical" in partition) or ("source" in partition)
                     if "train" in partition:
-                        if "atypical" in partition:
-                            source_train_cuts[partition] = cut_set                        
+                        if is_source:
+                            source_train_cuts[partition] = cut_set
                         else:
                             target_train_cuts[partition] = cut_set
                     elif "test" in partition:
-                        if "atypical" in partition:
-                            source_test_cuts[partition] = cut_set                      
+                        if is_source:
+                            source_test_cuts[partition] = cut_set
                         else:
                             target_test_cuts[partition] = cut_set
-                    elif "dev" in partition:
-                        if "atypical" in partition:
-                            source_dev_cuts[partition] = cut_set                      
-                        else:
-                            target_dev_cuts[partition] = cut_set    
+                    if dataset_parts_name in ("uaspeech_vc", "sap_vc"):
+                        if "dev" in partition or "val" in partition:
+                            if is_source:
+                                source_dev_cuts[partition] = cut_set
+                            else:
+                                target_dev_cuts[partition] = cut_set
                     # cut.target_recording = Recording.from_file
             except Exception:
                 cut_set = m["cuts"]
             if args.tts == 1:
                 process_base_tts(args, partition=partition, executor=ex, cuts=cut_set, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
         if args.tts == 0:
-            process_src_tgt_cuts(args, executor=ex, src=source_train_cuts, tgt=target_train_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
-            process_src_tgt_cuts(args, executor=ex, src=source_test_cuts, tgt=target_test_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
-            process_src_tgt_cuts(args, executor=ex, src=source_dev_cuts, tgt=target_dev_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor)
+            process_src_tgt_cuts(args, executor=ex, src=source_train_cuts, tgt=target_train_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=True)
+            process_src_tgt_cuts(args, executor=ex, src=source_test_cuts, tgt=target_test_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=True)
+            if dataset_parts_name in ("uaspeech_vc", "sap_vc"):
+                process_src_tgt_cuts(args, executor=ex, src=source_dev_cuts, tgt=target_dev_cuts, text_tokenizer=text_tokenizer, audio_extractor=audio_extractor, block_batching=False)
             
 
 if __name__ == "__main__":

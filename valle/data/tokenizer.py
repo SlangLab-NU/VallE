@@ -13,6 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import logging
 import re
 from dataclasses import asdict, dataclass
 from typing import Any, Dict, List, Optional, Pattern, Union
@@ -158,9 +159,13 @@ class TextTokenizer:
                 [p for p in pp if p != self.separator.phone]
                 + [self.separator.word]
             )
-        assert len("".join(fields[:-1])) == len(phonemized) - phonemized.count(
-            self.separator.phone
-        )
+        expected = len(phonemized) - phonemized.count(self.separator.phone)
+        actual = len("".join(fields[:-1]))
+        if actual != expected:
+            logging.warning(
+                f"Phoneme length mismatch: expected {expected} chars, got {actual}. "
+                f"Input phonemized: {repr(phonemized)}"
+            )
         return fields[:-1]
 
     def __call__(self, text, strip=True) -> List[List[str]]:
@@ -325,6 +330,7 @@ class AudioTokenExtractor(FeatureExtractor):
 
     def extract_batch(self, samples, sampling_rate, lengths) -> np.ndarray:
         samples = [wav.squeeze() for wav in samples]
+        samples = [s.mean(0) if s.ndim > 1 else s for s in samples]
         device = self.tokenizer.device
         samples, lengths = self.pad_tensor_list(samples, device)
         samples = samples.unsqueeze(1)

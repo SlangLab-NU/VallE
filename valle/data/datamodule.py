@@ -309,6 +309,7 @@ class TtsDataModule:
                 cut_transforms=transforms,
                 feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor()),
                 feature_transforms=input_transforms,
+                use_model_embeddings=self.args.use_model_embeddings,
             )
         else:
             train = SpeechSynthesisDataset(
@@ -318,6 +319,7 @@ class TtsDataModule:
                 ),
                 cut_transforms=transforms,
                 feature_transforms=input_transforms,
+                use_model_embeddings=self.args.use_model_embeddings,
             )
 
         if self.args.bucketing_sampler:
@@ -371,6 +373,7 @@ class TtsDataModule:
                 get_text_token_collater(self.args.text_tokens),
                 feature_input_strategy=OnTheFlyFeatures(get_fbank_extractor()),
                 cut_transforms=[],
+                use_model_embeddings=self.args.use_model_embeddings,
             )
         else:
             validate = SpeechSynthesisDataset(
@@ -379,6 +382,7 @@ class TtsDataModule:
                     self.args.input_strategy, self.args.dataset, cuts_valid
                 ),
                 cut_transforms=[],
+                use_model_embeddings=self.args.use_model_embeddings,
             )
         valid_sampler = DynamicBucketingSampler(
             cuts_valid,
@@ -407,6 +411,7 @@ class TtsDataModule:
                 self.args.input_strategy, self.args.dataset, cuts
             ),
             cut_transforms=[],
+            use_model_embeddings=self.args.use_model_embeddings,
         )
         sampler = DynamicBucketingSampler(
             cuts,
