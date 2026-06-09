@@ -121,6 +121,18 @@ def get_args():
     )
 
     parser.add_argument(
+        "--voice-conversion",
+        type=str2bool,
+        default=False,
+        help=(
+            "Use vc_inference() instead of inference(). "
+            "The prompt_audio field in the TSV is treated as the source (atypical) "
+            "speaker audio and attended to non-causally. "
+            "The text field is synthesized as-is (not prepended with prompt_text)."
+        ),
+    )
+
+    parser.add_argument(
         "--textless",
         type=str2bool,
         default=False,
@@ -235,7 +247,31 @@ def main():
                 assert len(fields) == 4 
                 prompt_text, prompt_audio, text, audio_path = fields
                 
-                if args.textless:
+                if args.voice_conversion:
+                    logging.info(f"VC inference: {prompt_audio} -> {audio_path}")
+                    source_audio_tokens = tokenize_audio(audio_tokenizer, prompt_audio)
+                    source_audio_tokens = source_audio_tokens[0][0].transpose(2, 1).to(device)
+
+                    text_tokens, text_tokens_lens = text_collater(
+                        [tokenize_text(text_tokenizer, text=text.strip())]
+                    )
+
+                    try:
+                        encoded_frames = model.vc_inference(
+                            text_tokens.to(device),
+                            text_tokens_lens.to(device),
+                            source_audio_tokens,
+                            top_k=args.top_k,
+                            temperature=args.temperature,
+                        )
+                        samples = audio_tokenizer.decode(
+                            [(encoded_frames.transpose(2, 1), None)]
+                        )
+                        torchaudio.save(audio_path, samples[0].cpu(), 24000)
+                    except SyntaxError:
+                        print(f"Unable to generate VC inference for {prompt_audio}, skipping.")
+
+                elif args.textless:
                     print("Loading Whisper model for textless inference...")
                     model.whisper_model = whisper.load_model("small.en", device="cpu")
                     model.whisper_model.eval()

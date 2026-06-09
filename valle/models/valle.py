@@ -586,6 +586,129 @@ class VALLE(ValleCore):
         assert len(codes) == self.num_quantizers
         return torch.stack(codes, dim=-1)
 
+    @torch.no_grad()
+    def vc_inference(
+        self,
+        x: torch.Tensor,
+        x_lens: torch.Tensor,
+        source_audio: torch.Tensor,
+        top_k: int = -100,
+        temperature: float = 1.0,
+    ) -> torch.Tensor:
+        """
+        Voice conversion inference using the hybrid attention mask from training.
+        Source audio tokens are attended to non-causally; target tokens are generated causally.
+
+        Args:
+          x:
+            Text token tensor of shape (1, T).
+          x_lens:
+            Token lengths tensor of shape (1,).
+          source_audio:
+            Source (atypical) speaker codec tokens of shape (1, S, 8).
+          top_k, temperature:
+            Sampling parameters for the AR decoder.
+        Returns:
+          Generated codec token matrix of shape (1, T_gen, 8).
+        """
+        assert x.ndim == 2 and x.shape[0] == 1
+        assert x_lens.ndim == 1
+        assert source_audio.ndim == 3 and source_audio.shape[0] == 1
+
+        device = x.device
+
+        # Save text tokens for NAR (x will be overwritten)
+        text = x
+        x = self.ar_text_embedding(text)
+        x = self.ar_text_prenet(x)
+        x = self.ar_text_position(x)
+
+        x_len = x_lens.max()
+        source_len = source_audio.shape[1]
+
+        # AR stage: generate target tokens conditioned on text + source (non-causal)
+        y = source_audio[:, :, 0]  # first codebook of source, shape (1, S)
+        x_attn_mask = torch.zeros((x_len, x_len), dtype=torch.bool, device=device)
+
+        while True:
+            y_len = y.shape[1]  # source_len + num_generated
+
+            # Hybrid mask: source region non-causal, target region causal
+            hybrid_mask = torch.zeros((y_len, y_len), dtype=torch.bool, device=device)
+            # Source positions cannot attend to generated target positions
+            hybrid_mask[:source_len, source_len:] = True
+            # Target positions: causal within target region
+            if y_len > source_len:
+                t = y_len - source_len
+                hybrid_mask[source_len:, source_len:] = torch.triu(
+                    torch.ones(t, t, dtype=torch.bool, device=device), diagonal=1
+                )
+
+            x_attn_mask_pad = F.pad(x_attn_mask, (0, y_len), value=True)
+            y_attn_mask = F.pad(hybrid_mask, (x_len, 0), value=False)
+            xy_attn_mask = torch.concat([x_attn_mask_pad, y_attn_mask], dim=0)
+
+            y_emb = self.ar_audio_embedding(y)
+            y_emb = self.ar_audio_prenet(y_emb)
+            y_pos = self.ar_audio_position(y_emb)
+            xy_pos = torch.concat([x, y_pos], dim=1)
+
+            xy_dec, _ = self.ar_decoder((xy_pos, None), mask=xy_attn_mask)
+            logits = self.ar_predict_layer(xy_dec[:, -1])
+            samples = topk_sampling(logits, top_k=top_k, top_p=1.0, temperature=temperature)
+
+            if (
+                torch.argmax(logits, dim=-1)[0] == NUM_AUDIO_TOKENS
+                or samples[0, 0] == NUM_AUDIO_TOKENS
+                or (y_len - source_len) > x_len * 16
+            ):
+                print(f"VALL-E VC EOS [{source_len} -> {y_len}]")
+                break
+
+            y = torch.concat([y, samples], dim=1)
+
+        # Strip source prefix to get generated target tokens only
+        ar_codes = y[:, source_len:]  # (1, T_gen)
+        codes = [ar_codes]
+
+        if self.num_quantizers == 1:
+            return torch.stack(codes, dim=-1)
+
+        # NAR stages: use full sequence (source + generated) as context
+        # y contains [source tokens (first CB) | generated tokens (first CB)]
+        y_emb = self.nar_audio_embeddings[0](y)
+
+        x = self.nar_text_embedding(text)
+        x = self.nar_text_prenet(x)
+        x = self.nar_text_position(x)
+
+        # prefix_mode == 0 path (required for SAP VC)
+        for i, (predict_layer, embedding_layer) in enumerate(
+            zip(self.nar_predict_layers, self.nar_audio_embeddings[1:])
+        ):
+            y_pos = self.nar_audio_prenet(y_emb)
+            y_pos = self.nar_audio_position(y_pos)
+            xy_pos = torch.concat([x, y_pos], dim=1)
+
+            xy_dec, _ = self.nar_decoder(
+                (xy_pos, self.nar_stage_embeddings[i].weight)
+            )
+            # Strip text + source prefix from output
+            logits = predict_layer(xy_dec[:, x_len + source_len:])
+            samples = torch.argmax(logits, dim=-1)
+            codes.append(samples)
+
+            if i < self.num_quantizers - 2:
+                # Update source region with higher codebook from source_audio
+                y_emb[:, :source_len] += embedding_layer(
+                    source_audio[:, :source_len, i + 1]
+                )
+                # Update generated region with predicted codebook
+                y_emb[:, source_len:] += embedding_layer(samples)
+
+        assert len(codes) == self.num_quantizers
+        return torch.stack(codes, dim=-1)
+
     def extract_whisper_embeddings(self, audio_tensor: torch.Tensor, sampling_rate: int) -> torch.Tensor:
         """
         Extract Whisper embeddings from audio
