@@ -131,8 +131,8 @@ class VALLE(ValleCore):
 
         seq_len = y.shape[1] # Total sequence length
         atypical_len = max_atypical_len
-        # Initialize Hybrid Mask as Fully Non-Causal
-        hybrid_mask = torch.ones((seq_len, seq_len), dtype=torch.bool, device=y.device)
+        # Initialize Hybrid Mask as Fully Non-Causal (False = allow, True = block)
+        hybrid_mask = torch.zeros((seq_len, seq_len), dtype=torch.bool, device=y.device)
 
         # Apply Causal Mask to the Typical Region
         hybrid_mask[atypical_len:, atypical_len:] = torch.triu(
