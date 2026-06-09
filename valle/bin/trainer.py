@@ -478,6 +478,9 @@ def load_checkpoint_if_available(
             if "cur_epoch" in saved_params:
                 params["start_epoch"] = saved_params["cur_epoch"]
 
+        if getattr(params, "reset_lr", False):
+            params.batch_idx_train = 0
+
     return saved_params
 
 
